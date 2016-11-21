@@ -37,6 +37,7 @@ static __thread unsigned int signals_delivered;
 
 static struct rseq_lock rseq_lock;
 
+#define RSEQ_REFCOUNT_ATTEMPTS	8
 static long rseq_refcount;
 
 #ifndef BENCHMARK
@@ -551,7 +552,9 @@ void *test_percpu_refcount_inc_thread(void *arg)
 		intptr_t *targetptr, newval;
 		int cpu;
 		bool result, put_ref;
+		int attempt = 0;
 
+	retry_rseq:
 		rseq_state = rseq_start();
 		if (!uatomic_read(&rseq_refcount)) {
 			/* Load refcount before loading rseq_count. */
@@ -563,6 +566,10 @@ void *test_percpu_refcount_inc_thread(void *arg)
 					rseq_state))) {
 				continue;	/* Success. */
 			}
+		}
+		if (++attempt < RSEQ_REFCOUNT_ATTEMPTS) {
+			caa_cpu_relax();
+			goto retry_rseq;
 		}
 		/* Fallback */
 		put_ref = refcount_get_saturate(&rseq_refcount);
