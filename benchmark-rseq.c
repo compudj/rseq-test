@@ -35,11 +35,6 @@ static int opt_yield, opt_signal, opt_sleep, opt_fallback_cnt = 3,
 
 static __thread unsigned int signals_delivered;
 
-static struct rseq_lock rseq_lock;
-
-#define RSEQ_REFCOUNT_ATTEMPTS	8
-static long rseq_refcount;
-
 #ifndef BENCHMARK
 
 static __thread unsigned int yield_mod_cnt, nr_retry;
@@ -134,7 +129,6 @@ struct percpu_lock {
 
 struct test_data_entry {
 	uintptr_t count;
-	uintptr_t rseq_count;
 } __attribute__((aligned(128)));
 
 struct spinlock_test_data {
@@ -174,23 +168,33 @@ struct percpu_list {
 /* A simple percpu spinlock.  Returns the cpu lock was acquired on. */
 static int rseq_percpu_lock(struct percpu_lock *lock)
 {
-	struct rseq_state rseq_state;
-	intptr_t *targetptr, newval;
 	int cpu;
-	bool result;
 
 	for (;;) {
-		do_rseq(&rseq_lock, rseq_state, cpu, result, targetptr, newval,
-			{
-				if (unlikely(lock->c[cpu].v)) {
-					result = false;
-				} else {
-					newval = 1;
-					targetptr = &lock->c[cpu].v;
-				}
-			});
-		if (likely(result))
+#ifndef SKIP_FASTPATH
+		struct rseq_state rseq_state;
+
+		/* Try fast path. */
+		rseq_state = rseq_start();
+		cpu = rseq_cpu_at_start(rseq_state);
+		if (unlikely(lock->c[cpu].v != 0))
+			continue;	/* Retry.*/
+		if (likely(rseq_finish(&lock->c[cpu].v, 1, rseq_state)))
 			break;
+		else
+#endif
+		{
+			/* Fallback on rseq_op system call. */
+			intptr_t expect = 0, n = 1;
+			int ret;
+
+			cpu = rseq_current_cpu_raw();
+			ret = rseq_op_cmpstore(&lock->c[cpu].v, &expect, &n,
+				sizeof(intptr_t), cpu);
+			if (likely(!ret))
+				break;
+			assert(ret >= 0 || errno == EAGAIN);
+		}
 	}
 	/*
 	 * Acquire semantic when taking lock after control dependency.
@@ -364,17 +368,32 @@ void *test_percpu_inc_thread(void *arg)
 			&& rseq_register_current_thread())
 		abort();
 	for (i = 0; i < thread_data->reps; i++) {
+		int cpu;
+
+#ifndef SKIP_FASTPATH
 		struct rseq_state rseq_state;
 		intptr_t *targetptr, newval;
-		int cpu;
-		bool result;
 
+		/* Try fast path. */
 		rseq_state = rseq_start();
 		cpu = rseq_cpu_at_start(rseq_state);
-		newval = data->c[cpu].rseq_count + 1;
-		targetptr = &data->c[cpu].rseq_count;
+		newval = (intptr_t)data->c[cpu].count + 1;
+		targetptr = (intptr_t *)&data->c[cpu].count;
 		if (unlikely(!rseq_finish(targetptr, newval, rseq_state)))
-			uatomic_inc(&data->c[cpu].count);
+#endif
+		{
+			for (;;) {
+				/* Fallback on rseq_op system call. */
+				int ret;
+
+				cpu = rseq_current_cpu_raw();
+				ret = rseq_op_add(&data->c[cpu].count, 1,
+					sizeof(intptr_t), cpu);
+				if (likely(!ret))
+					break;
+				assert(ret >= 0 || errno == EAGAIN);
+			}
+		}
 
 #ifndef BENCHMARK
 		if (i != 0 && !(i % (thread_data->reps / 10)))
@@ -427,215 +446,8 @@ void test_percpu_inc(void)
 	}
 
 	sum = 0;
-	for (i = 0; i < CPU_SETSIZE; i++) {
+	for (i = 0; i < CPU_SETSIZE; i++)
 		sum += data.c[i].count;
-		sum += data.c[i].rseq_count;
-	}
-
-	assert(sum == (uintptr_t)opt_reps * num_threads);
-}
-
-void *test_percpu_rlock_inc_thread(void *arg)
-{
-	struct inc_thread_test_data *thread_data = arg;
-	struct inc_test_data *data = thread_data->data;
-	int i;
-
-	if (!opt_disable_rseq && thread_data->reg
-			&& rseq_register_current_thread())
-		abort();
-	for (i = 0; i < thread_data->reps; i++) {
-		struct rseq_state rseq_state;
-		intptr_t *targetptr, newval;
-		int cpu;
-		bool result;
-
-		do_rseq(&rseq_lock, rseq_state, cpu, result,
-			targetptr, newval,
-			{
-				newval = data->c[cpu].rseq_count + 1;
-				targetptr = &data->c[cpu].rseq_count;
-			});
-
-#ifndef BENCHMARK
-		if (i != 0 && !(i % (thread_data->reps / 10)))
-			printf("tid %d: count %d\n", (int) gettid(), i);
-#endif
-	}
-	printf_nobench("tid %d: number of retry: %d, signals delivered: %u, nr_fallback %u, nr_fallback_wait %u\n",
-		(int) gettid(), nr_retry, signals_delivered,
-		__rseq_thread_state.fallback_cnt,
-		__rseq_thread_state.fallback_wait_cnt);
-	if (rseq_unregister_current_thread())
-		abort();
-	return NULL;
-}
-
-void test_percpu_rlock_inc(void)
-{
-	const int num_threads = opt_threads;
-	int i, ret;
-	uintptr_t sum;
-	pthread_t test_threads[num_threads];
-	struct inc_test_data data;
-	struct inc_thread_test_data thread_data[num_threads];
-	void *(*cb)(void *arg);
-
-	memset(&data, 0, sizeof(data));
-	for (i = 0; i < num_threads; i++) {
-		thread_data[i].reps = opt_reps;
-		if (opt_disable_mod <= 0 || (i % opt_disable_mod))
-			thread_data[i].reg = 1;
-		else
-			thread_data[i].reg = 0;
-		thread_data[i].data = &data;
-		ret = pthread_create(&test_threads[i], NULL,
-			test_percpu_rlock_inc_thread, &thread_data[i]);
-		if (ret) {
-			errno = ret;
-			perror("pthread_create");
-			abort();
-		}
-	}
-
-	for (i = 0; i < num_threads; i++) {
-		pthread_join(test_threads[i], NULL);
-		if (ret) {
-			errno = ret;
-			perror("pthread_join");
-			abort();
-		}
-	}
-
-	sum = 0;
-	for (i = 0; i < CPU_SETSIZE; i++) {
-		sum += data.c[i].count;
-		sum += data.c[i].rseq_count;
-	}
-
-	assert(sum == (uintptr_t)opt_reps * num_threads);
-}
-
-static
-bool refcount_get_saturate(long *ref)
-{
-	long old, _new, res;
-
-	old = uatomic_read(ref);
-	for (;;) {
-		if (old == LONG_MAX) {
-			return false;	/* Saturated. */
-		}
-		_new = old + 1;
-		res = uatomic_cmpxchg(ref, old, _new);
-		if (res == old) {
-			if (_new == LONG_MAX) {
-				return false; /* Saturation. */
-			}
-			return true;	/* Success. */
-		}
-		old = res;
-	}
-}
-
-void *test_percpu_refcount_inc_thread(void *arg)
-{
-	struct inc_thread_test_data *thread_data = arg;
-	struct inc_test_data *data = thread_data->data;
-	int i;
-
-	if (!opt_disable_rseq && thread_data->reg
-			&& rseq_register_current_thread())
-		abort();
-	for (i = 0; i < thread_data->reps; i++) {
-		struct rseq_state rseq_state;
-		intptr_t *targetptr, newval;
-		int cpu;
-		bool result, put_ref;
-		int attempt = 0;
-
-	retry_rseq:
-		rseq_state = rseq_start();
-		if (!uatomic_read(&rseq_refcount)) {
-			/* Load refcount before loading rseq_count. */
-			cmm_smp_rmb();
-			cpu = rseq_cpu_at_start(rseq_state);
-			newval = data->c[cpu].rseq_count + 1;
-			targetptr = &data->c[cpu].rseq_count;
-			if (likely(rseq_finish(targetptr, newval,
-					rseq_state))) {
-				continue;	/* Success. */
-			}
-		}
-		if (++attempt < RSEQ_REFCOUNT_ATTEMPTS) {
-			caa_cpu_relax();
-			goto retry_rseq;
-		}
-		/* Fallback */
-		put_ref = refcount_get_saturate(&rseq_refcount);
-		cpu = rseq_current_cpu_raw();
-		uatomic_inc(&data->c[cpu].rseq_count);
-		if (put_ref) {
-			/* inc rseq_count before dec refcount, match rmb. */
-			cmm_smp_wmb();
-			uatomic_dec(&rseq_refcount);
-		}
-
-#ifndef BENCHMARK
-		if (i != 0 && !(i % (thread_data->reps / 10)))
-			printf("tid %d: count %d\n", (int) gettid(), i);
-#endif
-	}
-	printf_nobench("tid %d: number of retry: %d, signals delivered: %u, nr_fallback %u, nr_fallback_wait %u\n",
-		(int) gettid(), nr_retry, signals_delivered,
-		__rseq_thread_state.fallback_cnt,
-		__rseq_thread_state.fallback_wait_cnt);
-	if (rseq_unregister_current_thread())
-		abort();
-	return NULL;
-}
-
-void test_percpu_refcount_inc(void)
-{
-	const int num_threads = opt_threads;
-	int i, ret;
-	uintptr_t sum;
-	pthread_t test_threads[num_threads];
-	struct inc_test_data data;
-	struct inc_thread_test_data thread_data[num_threads];
-	void *(*cb)(void *arg);
-
-	memset(&data, 0, sizeof(data));
-	for (i = 0; i < num_threads; i++) {
-		thread_data[i].reps = opt_reps;
-		if (opt_disable_mod <= 0 || (i % opt_disable_mod))
-			thread_data[i].reg = 1;
-		else
-			thread_data[i].reg = 0;
-		thread_data[i].data = &data;
-		ret = pthread_create(&test_threads[i], NULL,
-			test_percpu_refcount_inc_thread, &thread_data[i]);
-		if (ret) {
-			errno = ret;
-			perror("pthread_create");
-			abort();
-		}
-	}
-
-	for (i = 0; i < num_threads; i++) {
-		pthread_join(test_threads[i], NULL);
-		if (ret) {
-			errno = ret;
-			perror("pthread_join");
-			abort();
-		}
-	}
-
-	sum = 0;
-	for (i = 0; i < CPU_SETSIZE; i++) {
-		sum += data.c[i].count;
-		sum += data.c[i].rseq_count;
-	}
 
 	assert(sum == (uintptr_t)opt_reps * num_threads);
 }
@@ -705,10 +517,8 @@ void test_percpu_inc_atomic(void)
 	}
 
 	sum = 0;
-	for (i = 0; i < CPU_SETSIZE; i++) {
+	for (i = 0; i < CPU_SETSIZE; i++)
 		sum += data.c[i].count;
-		sum += data.c[i].rseq_count;
-	}
 
 	assert(sum == (uintptr_t)opt_reps * num_threads);
 }
@@ -785,10 +595,8 @@ void test_percpu_cmpxchg_atomic(void)
 	}
 
 	sum = 0;
-	for (i = 0; i < CPU_SETSIZE; i++) {
+	for (i = 0; i < CPU_SETSIZE; i++)
 		sum += data.c[i].count;
-		sum += data.c[i].rseq_count;
-	}
 
 	assert(sum == (uintptr_t)opt_reps * num_threads);
 }
@@ -986,18 +794,37 @@ void test_atomic_cmpxchg(void)
 
 int percpu_list_push(struct percpu_list *list, struct percpu_list_node *node)
 {
-	struct rseq_state rseq_state;
-	intptr_t *targetptr, newval;
+	intptr_t *targetptr, newval, expect;
 	int cpu;
-	bool result;
+#ifndef SKIP_FASTPATH
+	struct rseq_state rseq_state;
 
-	do_rseq(&rseq_lock, rseq_state, cpu, result, targetptr, newval,
-		{
+	/* Try fast path. */
+	rseq_state = rseq_start();
+	cpu = rseq_cpu_at_start(rseq_state);
+	newval = (intptr_t)node;
+	targetptr = (intptr_t *)&list->c[cpu].head;
+	node->next = list->c[cpu].head;
+	if (unlikely(!rseq_finish(targetptr, newval, rseq_state)))
+#endif
+	{
+		/* Fallback on rseq_op system call. */
+		for (;;) {
+			int ret;
+
+			cpu = rseq_current_cpu_raw();
+			/* Load list->c[cpu].head with single-copy atomicity. */
+			expect = (intptr_t)READ_ONCE(list->c[cpu].head);
 			newval = (intptr_t)node;
 			targetptr = (intptr_t *)&list->c[cpu].head;
-			node->next = list->c[cpu].head;
-		});
-
+			node->next = (struct percpu_list_node *)expect;
+			ret = rseq_op_cmpstore(targetptr, &expect, &newval,
+				sizeof(intptr_t), cpu);
+			if (likely(!ret))
+				break;
+			assert(ret >= 0 || errno == EAGAIN);
+		}
+	}
 	return cpu;
 }
 
@@ -1009,22 +836,47 @@ int percpu_list_push(struct percpu_list *list, struct percpu_list_node *node)
 struct percpu_list_node *percpu_list_pop(struct percpu_list *list)
 {
 	struct percpu_list_node *head, *next;
-	struct rseq_state rseq_state;
-	intptr_t *targetptr, newval;
+	intptr_t *targetptr, newval, expect;
 	int cpu;
-	bool result;
+#ifndef SKIP_FASTPATH
+	struct rseq_state rseq_state;
 
-	do_rseq(&rseq_lock, rseq_state, cpu, result, targetptr, newval,
-		{
-			head = list->c[cpu].head;
-			if (!head) {
-				result = false;
-			} else {
-				next = head->next;
-				newval = (intptr_t) next;
-				targetptr = (intptr_t *) &list->c[cpu].head;
-			}
-		});
+	/* Try fast path. */
+	rseq_state = rseq_start();
+	cpu = rseq_cpu_at_start(rseq_state);
+	/* Load list->c[cpu].head with single-copy atomicity. */
+	head = READ_ONCE(list->c[cpu].head);
+	if (!head)
+		return NULL;
+	/* Load head->next with single-copy atomicity. */
+	next = READ_ONCE(head->next);
+	newval = (intptr_t)next;
+	targetptr = (intptr_t *)&list->c[cpu].head;
+	if (unlikely(!rseq_finish(targetptr, newval, rseq_state)))
+#endif
+	{
+		/* Fallback on rseq_op system call. */
+		for (;;) {
+			int ret;
+
+			cpu = rseq_current_cpu_raw();
+			/* Load list->c[cpu].head with single-copy atomicity. */
+			head = READ_ONCE(list->c[cpu].head);
+			if (!head)
+				return NULL;
+			expect = (intptr_t)head;
+			/* Load head->next with single-copy atomicity. */
+			next = READ_ONCE(head->next);
+			newval = (intptr_t)next;
+			targetptr = (intptr_t *)&list->c[cpu].head;
+			ret = rseq_op_2cmp1store(targetptr, &expect, &newval,
+				&head->next, &next,
+				sizeof(intptr_t), cpu);
+			if (likely(!ret))
+				break;
+			assert(ret >= 0 || errno == EAGAIN);
+		}
+	}
 
 	return head;
 }
@@ -1180,7 +1032,7 @@ static void show_usage(int argc, char **argv)
 	printf("	[-r N] Number of repetitions per thread (default 5000)\n");
 	printf("	[-d] Disable rseq system call (no initialization)\n");
 	printf("	[-D M] Disable rseq for each M threads\n");
-	printf("	[-T test] Choose test: (b)aseline, percpu (s)pinlock, percpu (l)ist, percpu (i)ncrement, percpu rlock in(c)rement, percpu refcou(n)t fallback increment, global pthread (M)utex, global counter (I)ncrement, global (C)mpxchg, percpu atomic increment (p), percpu atomic cmpxchg (P)\n");
+	printf("	[-T test] Choose test: (b)aseline, percpu (s)pinlock, percpu (l)ist, percpu (i)ncrement, global pthread (M)utex, global counter (I)ncrement, global (C)mpxchg, percpu atomic increment (p), percpu atomic cmpxchg (P)\n");
 	printf("	[-h] Show this help.\n");
 	printf("\n");
 }
@@ -1189,10 +1041,6 @@ int main(int argc, char **argv)
 {
 	int i;
 
-	if (rseq_init_lock(&rseq_lock)) {
-		perror("rseq_init_lock");
-		return -1;
-	}
 	if (set_signal_handler())
 		goto error;
 	for (i = 1; i < argc; i++) {
@@ -1310,8 +1158,6 @@ int main(int argc, char **argv)
 			case 's':
 			case 'l':
 			case 'i':
-			case 'c':
-			case 'n':
 			case 'M':
 			case 'I':
 			case 'C':
@@ -1353,14 +1199,6 @@ int main(int argc, char **argv)
 		printf_nobench("counter increment\n");
 		test_percpu_inc();
 		break;
-	case 'c':
-		printf_nobench("rseq rlock counter increment\n");
-		test_percpu_rlock_inc();
-		break;
-	case 'n':
-		printf_nobench("rseq refcount-fallback counter increment\n");
-		test_percpu_refcount_inc();
-		break;
 	case 'M':
 		printf_nobench("pthread mutex\n");
 		test_pthread_mutex();
@@ -1387,7 +1225,5 @@ end:
 	return 0;
 
 error:
-	if (rseq_destroy_lock(&rseq_lock))
-		perror("rseq_destroy_lock");
 	return -1;
 }
