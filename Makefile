@@ -13,7 +13,8 @@ CPPFLAGS = -O2 -g -I./
 
 all: example-rseq-cpuid example-rseq-cpuid-lazy test-rseq-cpuid \
 	benchmark-rseq librseq.so libcpu-op.so libtest-linked-lib.so \
-	libtest-linked-lib2.so test-use-lib test-use-lib-define-tls-sym
+	libtest-linked-lib2.so test-use-lib test-use-lib-define-tls-sym \
+	test-dlopen-dlclose
 
 example-rseq-cpuid: example-rseq-cpuid.c rseq.c rseq.h
 	$(CC) $(CFLAGS) $(CPPFLAGS) -pthread -o $@ example-rseq-cpuid.c rseq.c
@@ -44,8 +45,11 @@ test-use-lib: test-use-lib.c rseq.h cpu-op.h test-template.h
 		-ltest-linked-lib -ltest-linked-lib2
 
 test-use-lib-define-tls-sym: test-use-lib-define-tls-sym.c rseq.h cpu-op.h test-template.h
-	$(CC) $(CFLAGS) $(CPPFLAGS) -pthread -o $@ test-use-lib.c -L./ -lrseq -lcpu-op \
+	$(CC) $(CFLAGS) $(CPPFLAGS) -pthread -o $@ test-use-lib-define-tls-sym.c -L./ -lrseq -lcpu-op \
 		-ltest-linked-lib -ltest-linked-lib2
+
+test-dlopen-dlclose: test-dlopen-dlclose.c
+	$(CC) $(CFLAGS) $(CPPFLAGS) -pthread -o $@ test-dlopen-dlclose.c -ldl
 
 .PHONY: clean
 
@@ -66,4 +70,5 @@ clean:
 		test-use-lib \
 		libtest-linked-lib.so \
 		libtest-linked-lib2.so \
-		test-use-lib-define-tls-sym
+		test-use-lib-define-tls-sym \
+		test-dlopen-dlclose

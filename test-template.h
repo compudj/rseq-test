@@ -60,8 +60,10 @@ static void TESTNAME(void)
 	}
 
 	sum = 0;
-	for (i = 0; i < CPU_SETSIZE; i++)
+	for (i = 0; i < CPU_SETSIZE; i++) {
 		sum += data.c[i].count;
+		data.c[i].count = 0;
+	}
 
 	printf("sum: %llu\n", (unsigned long long)sum);
 	assert(sum == (uintptr_t)opt_reps);
