@@ -15,6 +15,7 @@ void linked_lib2_fn(void)
 
 void linked_lib2_autoreg_fn(void)
 {
+	fprintf(stderr, "%s\n", __func__);
 	if (!rseq_registered) {
 		if (rseq_register_current_thread())
 			abort();
@@ -22,8 +23,8 @@ void linked_lib2_autoreg_fn(void)
 		 * Register destroy notifier. Pointer needs to
 		 * be non-NULL.
 		 */
-		if (pthread_setspecific(rseq_key, (void *)0x1))
-			abort();
+		//if (pthread_setspecific(rseq_key, (void *)0x1))
+		//	abort();
 		rseq_registered = 1;
 	}
 	linked_lib2_fn();
@@ -31,14 +32,16 @@ void linked_lib2_autoreg_fn(void)
 
 static void destroy_rseq_key(void *key)
 {
+	fprintf(stderr, "%s\n", __func__);
 	if (rseq_unregister_current_thread())
 		abort();
 }
 
-void __attribute__((constructor)) init(void)
+static void __attribute__((constructor)) lib2_init(void)
 {
 	int ret;
 
+	fprintf(stderr, "%s\n", __func__);
 	ret = pthread_key_create(&rseq_key, destroy_rseq_key);
 	if (ret) {
 		errno = -ret;
@@ -47,10 +50,13 @@ void __attribute__((constructor)) init(void)
 	}
 }
 
-void __attribute__((destructor)) destroy(void)
+static void __attribute__((destructor)) lib2_destroy(void)
 {
 	int ret;
 
+	//FIXME: pthread_key_delete does _NOT_ check if running threads have
+	//live keys, and does not call destroy_rseq_key.
+	fprintf(stderr, "%s\n", __func__);
 	ret = pthread_key_delete(rseq_key);
 	if (ret) {
 		errno = -ret;

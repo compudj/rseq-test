@@ -1,5 +1,7 @@
 #include <dlfcn.h>
 #include <assert.h>
+#include <stdio.h>
+#include <stdlib.h>
 
 static void (*linked_lib_autoreg_fn)(void);
 static void (*linked_lib2_autoreg_fn)(void);
@@ -21,13 +23,18 @@ int main(int argc, char **argv)
 	linked_lib2_autoreg_fn = dlsym(handle2, "linked_lib2_autoreg_fn");
 	assert(linked_lib2_autoreg_fn);
 
-	ret = dlclose(handle1);
-	assert(!ret);
-
 	linked_lib2_autoreg_fn();
 
 	ret = dlclose(handle2);
-	assert(!ret);
+	if (ret) {
+		fprintf(stderr, "dlclose error: %s", dlerror());
+		abort();
+	}
 
+	ret = dlclose(handle1);
+	if (ret) {
+		fprintf(stderr, "dlclose error: %s", dlerror());
+		abort();
+	}
 	return 0;
 }
