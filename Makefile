@@ -12,7 +12,7 @@
 CPPFLAGS = -O2 -g -I./
 
 all: example-rseq-cpuid example-rseq-cpuid-lazy test-rseq-cpuid \
-	benchmark-rseq rseq.so
+	benchmark-rseq librseq.so libcpu-op.so
 
 example-rseq-cpuid: example-rseq-cpuid.c rseq.c rseq.h
 	$(CC) $(CFLAGS) $(CPPFLAGS) -pthread -o $@ example-rseq-cpuid.c rseq.c
@@ -23,10 +23,13 @@ example-rseq-cpuid-lazy: example-rseq-cpuid-lazy.c rseq.c rseq.h
 test-rseq-cpuid: test-rseq-cpuid.c rseq.c rseq.h
 	$(CC) $(CFLAGS) $(CPPFLAGS) -pthread -o $@ test-rseq-cpuid.c rseq.c
 
-benchmark-rseq: benchmark-rseq.c rseq.c rseq.h
-	$(CC) $(CFLAGS) $(CPPFLAGS) -DBENCHMARK -pthread -o $@ benchmark-rseq.c rseq.c
+benchmark-rseq: benchmark-rseq.c
+	$(CC) $(CFLAGS) $(CPPFLAGS) -DBENCHMARK -pthread -o $@ benchmark-rseq.c rseq.c cpu-op.c
 
-rseq.so: rseq.c rseq.h cpu-op.c cpu-op.h
+librseq.so: rseq.c rseq.h
+	$(CC) $(CFLAGS) $(CPPFLAGS) -shared -fpic -o $@ $<
+
+libcpu-op.so: cpu-op.c cpu-op.h
 	$(CC) $(CFLAGS) $(CPPFLAGS) -shared -fpic -o $@ $<
 
 .PHONY: clean
@@ -43,4 +46,5 @@ clean:
 		example-rseq-cpuid \
 		example-rseq-cpuid-lazy \
 		test-rseq-cpuid \
-		rseq.so
+		librseq.so \
+		libcpu-op.so

@@ -118,6 +118,7 @@ static __thread unsigned int yield_mod_cnt, nr_retry;
 #endif /* BENCHMARK */
 
 #include "rseq.h"
+#include "cpu-op.h"
 
 struct percpu_lock_entry {
 	intptr_t v;
@@ -184,12 +185,12 @@ static int rseq_percpu_lock(struct percpu_lock *lock)
 		else
 #endif
 		{
-			/* Fallback on rseq_op system call. */
+			/* Fallback on cpu_op system call. */
 			intptr_t expect = 0, n = 1;
 			int ret;
 
 			cpu = rseq_current_cpu_raw();
-			ret = rseq_op_cmpstore(&lock->c[cpu].v, &expect, &n,
+			ret = cpu_op_cmpstore(&lock->c[cpu].v, &expect, &n,
 				sizeof(intptr_t), cpu);
 			if (likely(!ret))
 				break;
@@ -294,7 +295,6 @@ static pthread_mutex_t test_lock = PTHREAD_MUTEX_INITIALIZER;
 void *test_pthread_mutex_thread(void *arg)
 {
 	struct spinlock_thread_test_data *thread_data = arg;
-	struct spinlock_test_data *data = thread_data->data;
 	int i;
 
 	if (!opt_disable_rseq && thread_data->reg
@@ -383,11 +383,11 @@ void *test_percpu_inc_thread(void *arg)
 #endif
 		{
 			for (;;) {
-				/* Fallback on rseq_op system call. */
+				/* Fallback on cpu_op system call. */
 				int ret;
 
 				cpu = rseq_current_cpu_raw();
-				ret = rseq_op_add(&data->c[cpu].count, 1,
+				ret = cpu_op_add(&data->c[cpu].count, 1,
 					sizeof(intptr_t), cpu);
 				if (likely(!ret))
 					break;
@@ -417,7 +417,6 @@ void test_percpu_inc(void)
 	pthread_t test_threads[num_threads];
 	struct inc_test_data data;
 	struct inc_thread_test_data thread_data[num_threads];
-	void *(*cb)(void *arg);
 
 	memset(&data, 0, sizeof(data));
 	for (i = 0; i < num_threads; i++) {
@@ -488,7 +487,6 @@ void test_percpu_inc_atomic(void)
 	pthread_t test_threads[num_threads];
 	struct inc_test_data data;
 	struct inc_thread_test_data thread_data[num_threads];
-	void *(*cb)(void *arg);
 
 	memset(&data, 0, sizeof(data));
 	for (i = 0; i < num_threads; i++) {
@@ -566,7 +564,6 @@ void test_percpu_cmpxchg_atomic(void)
 	pthread_t test_threads[num_threads];
 	struct inc_test_data data;
 	struct inc_thread_test_data thread_data[num_threads];
-	void *(*cb)(void *arg);
 
 	memset(&data, 0, sizeof(data));
 	for (i = 0; i < num_threads; i++) {
@@ -604,7 +601,6 @@ void test_percpu_cmpxchg_atomic(void)
 void *test_atomic_inc_thread(void *arg)
 {
 	struct inc_thread_test_data *thread_data = arg;
-	struct inc_test_data *data = thread_data->data;
 	int i;
 
 	for (i = 0; i < thread_data->reps; i++) {
@@ -665,7 +661,6 @@ void test_atomic_inc(void)
 void *test_baseline_inc_thread(void *arg)
 {
 	struct inc_thread_test_data *thread_data = arg;
-	struct inc_test_data *data = thread_data->data;
 	int i;
 
 	for (i = 0; i < thread_data->reps; i++) {
@@ -726,7 +721,6 @@ void test_baseline_inc(void)
 void *test_atomic_cmpxchg_thread(void *arg)
 {
 	struct inc_thread_test_data *thread_data = arg;
-	struct inc_test_data *data = thread_data->data;
 	int i;
 
 	for (i = 0; i < thread_data->reps; i++) {
@@ -808,7 +802,7 @@ int percpu_list_push(struct percpu_list *list, struct percpu_list_node *node)
 	if (unlikely(!rseq_finish(targetptr, newval, rseq_state)))
 #endif
 	{
-		/* Fallback on rseq_op system call. */
+		/* Fallback on cpu_op system call. */
 		for (;;) {
 			int ret;
 
@@ -818,7 +812,7 @@ int percpu_list_push(struct percpu_list *list, struct percpu_list_node *node)
 			newval = (intptr_t)node;
 			targetptr = (intptr_t *)&list->c[cpu].head;
 			node->next = (struct percpu_list_node *)expect;
-			ret = rseq_op_cmpstore(targetptr, &expect, &newval,
+			ret = cpu_op_cmpstore(targetptr, &expect, &newval,
 				sizeof(intptr_t), cpu);
 			if (likely(!ret))
 				break;
@@ -855,7 +849,7 @@ struct percpu_list_node *percpu_list_pop(struct percpu_list *list)
 	if (unlikely(!rseq_finish(targetptr, newval, rseq_state)))
 #endif
 	{
-		/* Fallback on rseq_op system call. */
+		/* Fallback on cpu_op system call. */
 		for (;;) {
 			int ret;
 
@@ -869,7 +863,7 @@ struct percpu_list_node *percpu_list_pop(struct percpu_list *list)
 			next = READ_ONCE(head->next);
 			newval = (intptr_t)next;
 			targetptr = (intptr_t *)&list->c[cpu].head;
-			ret = rseq_op_2cmp1store(targetptr, &expect, &newval,
+			ret = cpu_op_2cmp1store(targetptr, &expect, &newval,
 				&head->next, &next,
 				sizeof(intptr_t), cpu);
 			if (likely(!ret))
