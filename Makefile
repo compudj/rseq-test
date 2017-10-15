@@ -55,4 +55,5 @@ clean:
 		test-rseq-cpuid \
 		librseq.so \
 		libcpu-op.so \
-		test-use-lib
+		test-use-lib \
+		libtest-linked-lib.so
