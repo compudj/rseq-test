@@ -95,7 +95,7 @@ int main(int argc, char **argv)
 		exit(EXIT_FAILURE);
 
 	printf("# Registering restartable sequences.\n");
-	if (rseq_register_current_thread()) {
+	if (rseq_register_current_thread(&__rseq_abi)) {
 		fprintf(stderr, "[error] Unable to initialize restartable sequences.\n");
 		perror("rseq_register_current_thread");
 		exit(EXIT_FAILURE);
@@ -112,7 +112,7 @@ int main(int argc, char **argv)
 
 	printf("All OK!\n");
 
-	if (rseq_unregister_current_thread()) {
+	if (rseq_unregister_current_thread(&__rseq_abi)) {
 		perror("rseq_unregister_current_thread");
 		exit(EXIT_FAILURE);
 	}

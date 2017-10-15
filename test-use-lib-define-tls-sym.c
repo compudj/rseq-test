@@ -13,7 +13,7 @@ void linked_lib2_fn(void);
 
 int main(int argc, char **argv)
 {
-	if (rseq_register_current_thread())
+	if (rseq_register_current_thread(&__rseq_abi))
 		abort();
 
 	/* Perform test in main executable, using librseq and libcpu_op. */
@@ -24,7 +24,7 @@ int main(int argc, char **argv)
 	/* Same with 2nd lib. */
 	linked_lib2_fn();
 
-	if (rseq_unregister_current_thread())
+	if (rseq_unregister_current_thread(&__rseq_abi))
 		abort();
 
 	return 0;

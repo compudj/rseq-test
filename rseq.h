@@ -98,12 +98,12 @@ struct rseq_state {
  * it fails, the restartable critical sections will fall-back on locking
  * (rseq_lock).
  */
-int rseq_register_current_thread(void);
+int rseq_register_current_thread(volatile struct rseq *rseq_abi);
 
 /*
  * Unregister rseq for current thread.
  */
-int rseq_unregister_current_thread(void);
+int rseq_unregister_current_thread(volatile struct rseq *rseq_abi);
 
 /*
  * Restartable sequence fallback for reading the current CPU number.

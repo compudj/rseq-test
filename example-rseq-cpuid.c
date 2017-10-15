@@ -41,7 +41,7 @@ main(int argc, char **argv)
 {
 	bool rseq_registered = false;
 
-	if (!rseq_register_current_thread()) {
+	if (!rseq_register_current_thread(&__rseq_abi)) {
 		rseq_registered = true;
 	} else {
 		fprintf(stderr, "Unable to initialize restartable sequences.\n");
@@ -49,7 +49,7 @@ main(int argc, char **argv)
 	}
 	printf("Current CPU number: %d\n", rseq_current_cpu());
 
-	if (rseq_registered && rseq_unregister_current_thread()) {
+	if (rseq_registered && rseq_unregister_current_thread(&__rseq_abi)) {
 		exit(EXIT_FAILURE);
 	}
 	exit(EXIT_SUCCESS);
