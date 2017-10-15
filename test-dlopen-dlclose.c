@@ -17,8 +17,8 @@ int main(int argc, char **argv)
 
 	handle2 = dlopen("./libtest-linked-lib2.so", RTLD_NOW | RTLD_GLOBAL);
 	assert(handle2);
-	linked_lib_fn = dlsym(handle2, "linked_lib_fn2");
-	assert(linked_lib_fn);
+	linked_lib2_fn = dlsym(handle2, "linked_lib2_fn");
+	assert(linked_lib2_fn);
 
 	linked_lib2_fn();
 
