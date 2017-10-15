@@ -7,7 +7,6 @@
 __attribute__((weak)) __thread volatile struct rseq __rseq_abi = {
 	.u.e.cpu_id = -1,
 };
-__attribute__((weak)) uint32_t rseq_sig = RSEQ_SIG;
 
 void linked_lib_fn(void);
 void linked_lib2_fn(void);
