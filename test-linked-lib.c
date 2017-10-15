@@ -50,12 +50,14 @@ static void __attribute__((constructor)) lib_init(void)
 	}
 }
 
+/*
+ * Cannot be called when threads are still using the key.
+ * Requires RTLD_NODELETE.
+ */
 static void __attribute__((destructor)) lib_destroy(void)
 {
 	int ret;
 
-	//FIXME: pthread_key_delete does _NOT_ check if running threads have
-	//live keys, and does not call destroy_rseq_key.
 	fprintf(stderr, "%s\n", __func__);
 	ret = pthread_key_delete(rseq_key);
 	if (ret) {

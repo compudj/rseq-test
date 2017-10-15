@@ -15,4 +15,4 @@ test-use-lib
 libtest-linked-lib.so
 libtest-linked-lib2.so
 test-use-lib-define-tls-sym
-test-dlopen-dlclose
+test-dlopen

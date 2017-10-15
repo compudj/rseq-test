@@ -48,8 +48,8 @@ test-use-lib-define-tls-sym: test-use-lib-define-tls-sym.c rseq.h cpu-op.h test-
 	$(CC) $(CFLAGS) $(CPPFLAGS) -pthread -o $@ test-use-lib-define-tls-sym.c -L./ -lrseq -lcpu-op \
 		-ltest-linked-lib -ltest-linked-lib2
 
-test-dlopen-dlclose: test-dlopen-dlclose.c
-	$(CC) $(CFLAGS) $(CPPFLAGS) -pthread -o $@ test-dlopen-dlclose.c -ldl
+test-dlopen: test-dlopen.c
+	$(CC) $(CFLAGS) $(CPPFLAGS) -pthread -o $@ test-dlopen.c -ldl
 
 .PHONY: clean
 
@@ -71,4 +71,4 @@ clean:
 		libtest-linked-lib.so \
 		libtest-linked-lib2.so \
 		test-use-lib-define-tls-sym \
-		test-dlopen-dlclose
+		test-dlopen
