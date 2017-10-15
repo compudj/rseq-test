@@ -4,7 +4,7 @@
 
 #include "test-template.h"
 
-__attribute__((weak)) __thread volatile struct rseq __rseq_abi = {
+__thread volatile struct rseq __rseq_abi = {
 	.u.e.cpu_id = -1,
 };
 
