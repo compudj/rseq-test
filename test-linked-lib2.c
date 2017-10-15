@@ -8,3 +8,8 @@ void linked_lib2_fn(void)
 {
 	do_test_linked_lib2();
 }
+
+void linked_lib2_autoreg_fn(void)
+{
+	//TODO
+}
