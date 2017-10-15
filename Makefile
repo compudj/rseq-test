@@ -35,10 +35,10 @@ libcpu-op.so: cpu-op.c cpu-op.h
 	$(CC) $(CFLAGS) $(CPPFLAGS) -shared -fpic -o $@ $<
 
 libtest-linked-lib.so: test-linked-lib.c rseq.h cpu-op.h test-template.h
-	$(CC) $(CFLAGS) $(CPPFLAGS) -shared -fpic -o $@ $<
+	$(CC) $(CFLAGS) $(CPPFLAGS) -shared -fpic -o $@ $< -L./ -lrseq -lcpu-op
 
 libtest-linked-lib2.so: test-linked-lib2.c rseq.h cpu-op.h test-template.h
-	$(CC) $(CFLAGS) $(CPPFLAGS) -shared -fpic -o $@ $<
+	$(CC) $(CFLAGS) $(CPPFLAGS) -shared -fpic -o $@ $< -L./ -lrseq -lcpu-op
 
 test-use-lib: test-use-lib.c rseq.h cpu-op.h test-template.h
 	$(CC) $(CFLAGS) $(CPPFLAGS) -pthread -o $@ test-use-lib.c -L./ -lrseq -lcpu-op \
