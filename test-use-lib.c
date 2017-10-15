@@ -5,6 +5,7 @@
 #include "test-template.h"
 
 void linked_lib_fn(void);
+void linked_lib2_fn(void);
 
 int main(int argc, char **argv)
 {
@@ -16,6 +17,8 @@ int main(int argc, char **argv)
 
 	/* Perform test within library, itself using librseq and libcpu_op. */
 	linked_lib_fn();
+	/* Same with 2nd lib. */
+	linked_lib2_fn();
 
 	if (rseq_unregister_current_thread())
 		abort();

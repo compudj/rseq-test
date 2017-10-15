@@ -13,3 +13,4 @@ librseq.so
 libcpu-op.so
 test-use-lib
 libtest-linked-lib.so
+libtest-linked-lib2.so

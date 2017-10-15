@@ -13,7 +13,7 @@ CPPFLAGS = -O2 -g -I./
 
 all: example-rseq-cpuid example-rseq-cpuid-lazy test-rseq-cpuid \
 	benchmark-rseq librseq.so libcpu-op.so libtest-linked-lib.so \
-	test-use-lib
+	libtest-linked-lib2.so test-use-lib
 
 example-rseq-cpuid: example-rseq-cpuid.c rseq.c rseq.h
 	$(CC) $(CFLAGS) $(CPPFLAGS) -pthread -o $@ example-rseq-cpuid.c rseq.c
@@ -36,8 +36,12 @@ libcpu-op.so: cpu-op.c cpu-op.h
 libtest-linked-lib.so: test-linked-lib.c rseq.h cpu-op.h test-template.h
 	$(CC) $(CFLAGS) $(CPPFLAGS) -shared -fpic -o $@ $<
 
+libtest-linked-lib2.so: test-linked-lib2.c rseq.h cpu-op.h test-template.h
+	$(CC) $(CFLAGS) $(CPPFLAGS) -shared -fpic -o $@ $<
+
 test-use-lib: test-use-lib.c test-linked-lib.c rseq.h cpu-op.h test-template.h
-	$(CC) $(CFLAGS) $(CPPFLAGS) -pthread -o $@ test-use-lib.c -L./ -lrseq -lcpu-op -ltest-linked-lib
+	$(CC) $(CFLAGS) $(CPPFLAGS) -pthread -o $@ test-use-lib.c -L./ -lrseq -lcpu-op \
+		-ltest-linked-lib -ltest-linked-lib2
 
 .PHONY: clean
 
@@ -56,4 +60,5 @@ clean:
 		librseq.so \
 		libcpu-op.so \
 		test-use-lib \
-		libtest-linked-lib.so
+		libtest-linked-lib.so \
+		libtest-linked-lib2.so
