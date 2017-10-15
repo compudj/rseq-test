@@ -7,6 +7,7 @@ static void (*linked_lib2_autoreg_fn)(void);
 int main(int argc, char **argv)
 {
 	void *handle1, *handle2;
+	int ret;
 
 	handle1 = dlopen("./libtest-linked-lib.so", RTLD_NOW | RTLD_GLOBAL);
 	assert(handle1);
@@ -20,7 +21,13 @@ int main(int argc, char **argv)
 	linked_lib2_autoreg_fn = dlsym(handle2, "linked_lib2_autoreg_fn");
 	assert(linked_lib2_autoreg_fn);
 
+	ret = dlclose(handle1);
+	assert(!ret);
+
 	linked_lib2_autoreg_fn();
+
+	ret = dlclose(handle2);
+	assert(!ret);
 
 	return 0;
 }
