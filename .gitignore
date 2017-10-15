@@ -14,3 +14,4 @@ libcpu-op.so
 test-use-lib
 libtest-linked-lib.so
 libtest-linked-lib2.so
+test-use-lib-define-tls-sym
