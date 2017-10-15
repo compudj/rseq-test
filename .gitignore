@@ -11,3 +11,4 @@ example-rseq-cpuid-lazy
 test-rseq-cpuid
 librseq.so
 libcpu-op.so
+test-use-lib
