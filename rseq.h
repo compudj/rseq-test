@@ -71,6 +71,11 @@ extern __thread volatile struct rseq __rseq_abi;
 #define WRITE_ONCE(x, v)	__extension__ ({ ACCESS_ONCE(x) = (v); })
 #define READ_ONCE(x)		ACCESS_ONCE(x)
 
+#define __stringify_1(x)	#x
+#define __stringify(x)		__stringify_1(x)
+
+#define RSEQ_SIG	0x53053053
+
 #if defined(__x86_64__) || defined(__i386__)
 #include <rseq-x86.h>
 #elif defined(__ARMEL__)
@@ -87,8 +92,6 @@ struct rseq_state {
 	int32_t cpu_id;		/* cpu_id at start. */
 	uint32_t event_counter;	/* event_counter at start. */
 };
-
-int rseq_op(struct rseq_op *rseqop, int rseqopcnt, int cpu, int flags);
 
 /*
  * Register rseq for the current thread. This needs to be called once
@@ -296,16 +299,5 @@ bool rseq_finish_memcpy_release(void *p_memcpy, void *to_write_memcpy,
 			p_final, to_write_final, start_value,
 			RSEQ_FINISH_MEMCPY, true);
 }
-
-int rseq_op_cmpstore(void *v, void *expect, void *_new, size_t len, int cpu);
-int rseq_op_2cmp1store(void *v, void *expect, void *_new, void *check2,
-		void *expect2, size_t len, int cpu);
-int rseq_op_1cmp2store(void *v, void *expect, void *_new,
-		void *v2, void *_new2, size_t len, int cpu);
-int rseq_op_cmpxchg(void *v, void *expect, void *old, void *_new,
-		size_t len, int cpu);
-int rseq_op_add(void *v, int64_t count, size_t len, int cpu);
-int rseq_op_cmpstorememcpy(void *v, void *expect, void *_new, size_t len,
-		void *dst, void *src, size_t copylen, int cpu);
 
 #endif  /* RSEQ_H_ */

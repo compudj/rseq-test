@@ -26,7 +26,7 @@ test-rseq-cpuid: test-rseq-cpuid.c rseq.c rseq.h
 benchmark-rseq: benchmark-rseq.c rseq.c rseq.h
 	$(CC) $(CFLAGS) $(CPPFLAGS) -DBENCHMARK -pthread -o $@ benchmark-rseq.c rseq.c
 
-rseq.so: rseq.c rseq.h
+rseq.so: rseq.c rseq.h cpu-op.c cpu-op.h
 	$(CC) $(CFLAGS) $(CPPFLAGS) -shared -fpic -o $@ $<
 
 .PHONY: clean
