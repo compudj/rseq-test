@@ -17,14 +17,17 @@ void linked_lib_autoreg_fn(void)
 {
 	fprintf(stderr, "%s\n", __func__);
 	if (!rseq_registered) {
-		if (rseq_register_current_thread())
-			abort();
-		/*
-		 * Register destroy notifier. Pointer needs to
-		 * be non-NULL.
-		 */
-		if (pthread_setspecific(rseq_key, (void *)0x1))
-			abort();
+		if (!rseq_register_current_thread()) {
+			/*
+			 * Register destroy notifier. Pointer needs to
+			 * be non-NULL.
+			 */
+			if (pthread_setspecific(rseq_key, (void *)0x1))
+				abort();
+		} else {
+			if (errno != EBUSY)
+				abort();
+		}
 		rseq_registered = 1;
 	}
 	linked_lib_fn();
@@ -35,6 +38,7 @@ static void destroy_rseq_key(void *key)
 	fprintf(stderr, "%s\n", __func__);
 	if (rseq_unregister_current_thread())
 		abort();
+	rseq_registered = 0;
 }
 
 static void __attribute__((constructor)) lib_init(void)

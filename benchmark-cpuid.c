@@ -222,17 +222,18 @@ static inline int read_cpu_id_lazy(void)
 		if (rseq_init_fail)
 			goto fallback;
 		/*
-		 * Note: would need to disable signals across register
-		 * and pthread_setspecific to be signal-safe.
+		 * Note: pthread_setspecific is not signal-safe.
 		 */
 		if (!rseq_register_current_thread()) {
 			if (pthread_setspecific(rseq_key, (void *)0x1))
 				abort();
 		} else {
-			rseq_init_fail = 1;
-			fprintf(stderr, "Unable to initialize restartable sequences.\n");
-			fprintf(stderr, "Using sched_getcpu() as fallback.\n");
-			goto fallback;
+			if (errno != EBUSY) {
+				rseq_init_fail = 1;
+				fprintf(stderr, "Unable to initialize restartable sequences.\n");
+				fprintf(stderr, "Using sched_getcpu() as fallback.\n");
+				goto fallback;
+			}
 		}
 		cpu = rseq_current_cpu();
 	}
