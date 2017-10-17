@@ -4,9 +4,7 @@
 
 #include "test-template.h"
 
-__thread volatile struct rseq __rseq_abi = {
-	.u.e.cpu_id = -1,
-};
+DEFINE_RSEQ_ABI();
 
 void linked_lib_fn(void);
 void linked_lib2_fn(void);
