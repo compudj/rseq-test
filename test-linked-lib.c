@@ -17,7 +17,7 @@ void linked_lib_autoreg_fn(void)
 {
 	fprintf(stderr, "%s\n", __func__);
 	if (!rseq_registered) {
-		if (rseq_register_current_thread(&__rseq_abi))
+		if (rseq_register_current_thread())
 			abort();
 		/*
 		 * Register destroy notifier. Pointer needs to
@@ -33,7 +33,7 @@ void linked_lib_autoreg_fn(void)
 static void destroy_rseq_key(void *key)
 {
 	fprintf(stderr, "%s\n", __func__);
-	if (rseq_unregister_current_thread(&__rseq_abi))
+	if (rseq_unregister_current_thread())
 		abort();
 }
 

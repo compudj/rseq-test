@@ -209,7 +209,7 @@ static pthread_key_t rseq_key;
 static void
 destroy_rseq_key(void *key)
 {
-	if (rseq_unregister_current_thread(&__rseq_abi))
+	if (rseq_unregister_current_thread())
 		abort();
 }
 
@@ -225,7 +225,7 @@ static inline int read_cpu_id_lazy(void)
 		 * Note: would need to disable signals across register
 		 * and pthread_setspecific to be signal-safe.
 		 */
-		if (!rseq_register_current_thread(&__rseq_abi)) {
+		if (!rseq_register_current_thread()) {
 			if (pthread_setspecific(rseq_key, (void *)0x1))
 				abort();
 		} else {
@@ -254,7 +254,7 @@ static void *thread_fct(void *arg)
 
 	sigsafe_fprintf(stderr, "[tid: %d, cpu: %d] Thread starts\n",
 		gettid(), cpu);
-	ret = rseq_register_current_thread(&__rseq_abi);
+	ret = rseq_register_current_thread();
 	if (ret) {
 		abort();
 	}
@@ -294,7 +294,7 @@ static void *thread_fct(void *arg)
 		}
 	}
 	thread_loops[thread_nr] = loop_count;
-	if (rseq_unregister_current_thread(&__rseq_abi))
+	if (rseq_unregister_current_thread())
 		abort();
 	return NULL;
 }

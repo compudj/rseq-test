@@ -42,7 +42,7 @@ static pthread_key_t rseq_key;
 static void
 destroy_rseq_key(void *key)
 {
-	if (rseq_unregister_current_thread(&__rseq_abi))
+	if (rseq_unregister_current_thread())
 		abort();
 }
 
@@ -59,7 +59,7 @@ read_cpu_id(void)
 		 * Note: would need to disable signals across register
 		 * and pthread_setspecific to be signal-safe.
 		 */
-		if (!rseq_register_current_thread(&__rseq_abi)) {
+		if (!rseq_register_current_thread()) {
 			/*
 			 * Register destroy notifier. Pointer needs to
 			 * be non-NULL.

@@ -9,7 +9,6 @@ static void (*linked_lib2_autoreg_fn)(void);
 int main(int argc, char **argv)
 {
 	void *handle1, *handle2;
-	int ret;
 
 	handle1 = dlopen("./libtest-linked-lib.so",
 			RTLD_NOW | RTLD_GLOBAL | RTLD_NODELETE);
