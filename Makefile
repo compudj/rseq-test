@@ -34,17 +34,17 @@ librseq.so: rseq.c rseq.h
 libcpu-op.so: cpu-op.c cpu-op.h
 	$(CC) $(CFLAGS) $(CPPFLAGS) -shared -fpic -o $@ $<
 
-libtest-linked-lib.so: test-linked-lib.c rseq.h cpu-op.h test-template.h
+libtest-linked-lib.so: test-linked-lib.c rseq.h cpu-op.h test-template.h librseq.so libcpu-op.so
 	$(CC) $(CFLAGS) $(CPPFLAGS) -shared -fpic -o $@ $< -L./ -lrseq -lcpu-op
 
-libtest-linked-lib2.so: test-linked-lib2.c rseq.h cpu-op.h test-template.h
+libtest-linked-lib2.so: test-linked-lib2.c rseq.h cpu-op.h test-template.h librseq.so libcpu-op.so
 	$(CC) $(CFLAGS) $(CPPFLAGS) -shared -fpic -o $@ $< -L./ -lrseq -lcpu-op
 
-test-use-lib: test-use-lib.c rseq.h cpu-op.h test-template.h
+test-use-lib: test-use-lib.c rseq.h cpu-op.h test-template.h librseq.so libcpu-op.so libtest-linked-lib.so libtest-linked-lib2.so
 	$(CC) $(CFLAGS) $(CPPFLAGS) -pthread -o $@ test-use-lib.c -L./ -lrseq -lcpu-op \
 		-ltest-linked-lib -ltest-linked-lib2
 
-test-use-lib-define-tls-sym: test-use-lib-define-tls-sym.c rseq.h cpu-op.h test-template.h
+test-use-lib-define-tls-sym: test-use-lib-define-tls-sym.c rseq.h cpu-op.h test-template.h librseq.so libcpu-op.so libtest-linked-lib.so libtest-linked-lib2.so
 	$(CC) $(CFLAGS) $(CPPFLAGS) -pthread -o $@ test-use-lib-define-tls-sym.c -L./ -lrseq -lcpu-op \
 		-ltest-linked-lib -ltest-linked-lib2
 
