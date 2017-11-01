@@ -37,7 +37,7 @@ static __thread unsigned int signals_delivered;
 
 #ifndef BENCHMARK
 
-static __thread unsigned int yield_mod_cnt, nr_retry;
+static __thread unsigned int yield_mod_cnt, nr_abort;
 
 #define printf_nobench(fmt, ...)	printf(fmt, ## __VA_ARGS__)
 
@@ -84,7 +84,7 @@ static __thread unsigned int yield_mod_cnt, nr_retry;
 #endif
 
 #define RSEQ_INJECT_FAILED \
-	nr_retry++;
+	nr_abort++;
 
 #define RSEQ_INJECT_C(n) \
 { \
@@ -172,36 +172,29 @@ static int rseq_percpu_lock(struct percpu_lock *lock)
 	int cpu;
 
 	for (;;) {
+		int ret;
+
 #ifndef SKIP_FASTPATH
-		struct rseq_state rseq_state;
-
 		/* Try fast path. */
-		rseq_state = rseq_start();
-		cpu = rseq_cpu_at_start(rseq_state);
-		if (unlikely(lock->c[cpu].v != 0))
-			continue;	/* Retry.*/
-		if (likely(rseq_finish(&lock->c[cpu].v, 1, rseq_state)))
+		cpu = rseq_current_cpu_raw();
+		if (unlikely(cpu < 0))
+			goto slowpath;
+		ret = rseq_cmpeqv_storev(&lock->c[cpu].v,
+				0, 1, cpu);
+		if (likely(!ret))
 			break;
-		else
+		if (ret > 0)
+			continue;	/* Retry. */
 #endif
-		{
-			/* Fallback on cpu_op system call. */
-			intptr_t expect = 0, n = 1;
-			int ret;
-
-			cpu = rseq_current_cpu_raw();
-			ret = cpu_op_cmpstore(&lock->c[cpu].v, &expect, &n,
-				sizeof(intptr_t), cpu);
-			if (likely(!ret))
-				break;
-			assert(ret >= 0 || errno == EAGAIN);
-		}
+	slowpath:
+		__attribute__((unused));
+		/* Fallback on cpu_opv system call. */
+		cpu = rseq_current_cpu();
+		ret = cpu_op_cmpeqv_storev(&lock->c[cpu].v, 0, 1, cpu);
+		if (likely(!ret))
+			break;
+		assert(ret >= 0 || errno == EAGAIN);
 	}
-	/*
-	 * Acquire semantic when taking lock after control dependency.
-	 * Matches smp_store_release().
-	 */
-	smp_acquire__after_ctrl_dep();
 	return cpu;
 }
 
@@ -233,10 +226,8 @@ void *test_percpu_spinlock_thread(void *arg)
 			printf("tid %d: count %d\n", (int) gettid(), i);
 #endif
 	}
-	printf_nobench("tid %d: number of retry: %d, signals delivered: %u, nr_fallback %u, nr_fallback_wait %u\n",
-		(int) gettid(), nr_retry, signals_delivered,
-		__rseq_thread_state.fallback_cnt,
-		__rseq_thread_state.fallback_wait_cnt);
+	printf_nobench("tid %d: number of rseq abort: %d, signals delivered: %u\n",
+		(int) gettid(), nr_abort, signals_delivered);
 	if (rseq_unregister_current_thread())
 		abort();
 	return NULL;
@@ -309,10 +300,8 @@ void *test_pthread_mutex_thread(void *arg)
 			printf("tid %d: count %d\n", (int) gettid(), i);
 #endif
 	}
-	printf_nobench("tid %d: number of retry: %d, signals delivered: %u, nr_fallback %u, nr_fallback_wait %u\n",
-		(int) gettid(), nr_retry, signals_delivered,
-		__rseq_thread_state.fallback_cnt,
-		__rseq_thread_state.fallback_wait_cnt);
+	printf_nobench("tid %d: number of retry: %d, signals delivered: %u\n",
+		(int) gettid(), nr_retry, signals_delivered);
 	if (rseq_unregister_current_thread())
 		abort();
 	return NULL;
@@ -368,42 +357,36 @@ void *test_percpu_inc_thread(void *arg)
 			&& rseq_register_current_thread())
 		abort();
 	for (i = 0; i < thread_data->reps; i++) {
-		int cpu;
+		int cpu, ret;
 
 #ifndef SKIP_FASTPATH
-		struct rseq_state rseq_state;
-		intptr_t *targetptr, newval;
-
 		/* Try fast path. */
-		rseq_state = rseq_start();
-		cpu = rseq_cpu_at_start(rseq_state);
-		newval = (intptr_t)data->c[cpu].count + 1;
-		targetptr = (intptr_t *)&data->c[cpu].count;
-		if (unlikely(!rseq_finish(targetptr, newval, rseq_state)))
+		cpu = rseq_current_cpu_raw();
+		if (unlikely(cpu < 0))
+			goto slowpath;
+		ret = rseq_addv(&data->c[cpu].count, 1, cpu);
+		if (likely(!ret))
+			goto next;
 #endif
-		{
-			for (;;) {
-				/* Fallback on cpu_op system call. */
-				int ret;
-
-				cpu = rseq_current_cpu_raw();
-				ret = cpu_op_add(&data->c[cpu].count, 1,
-					sizeof(intptr_t), cpu);
-				if (likely(!ret))
-					break;
-				assert(ret >= 0 || errno == EAGAIN);
-			}
+	slowpath:
+		__attribute__((unused));
+		for (;;) {
+			/* Fallback on cpu_opv system call. */
+			cpu = rseq_current_cpu();
+			ret = cpu_op_addv(&data->c[cpu].count, 1, cpu);
+			if (likely(!ret))
+				break;
+			assert(ret >= 0 || errno == EAGAIN);
 		}
-
+	next:
+		__attribute__((unused));
 #ifndef BENCHMARK
 		if (i != 0 && !(i % (thread_data->reps / 10)))
-			printf("tid %d: count %d\n", (int) gettid(), i);
+			printf_verbose("tid %d: count %d\n", (int) gettid(), i);
 #endif
 	}
-	printf_nobench("tid %d: number of retry: %d, signals delivered: %u, nr_fallback %u, nr_fallback_wait %u\n",
-		(int) gettid(), nr_retry, signals_delivered,
-		__rseq_thread_state.fallback_cnt,
-		__rseq_thread_state.fallback_wait_cnt);
+	printf_nobench("tid %d: number of retry: %d, signals delivered: %u\n",
+		(int) gettid(), nr_retry, signals_delivered);
 	if (rseq_unregister_current_thread())
 		abort();
 	return NULL;
@@ -470,10 +453,8 @@ void *test_percpu_inc_thread_atomic(void *arg)
 			printf("tid %d: count %d\n", (int) gettid(), i);
 #endif
 	}
-	printf_nobench("tid %d: number of retry: %d, signals delivered: %u, nr_fallback %u, nr_fallback_wait %u\n",
-		(int) gettid(), nr_retry, signals_delivered,
-		__rseq_thread_state.fallback_cnt,
-		__rseq_thread_state.fallback_wait_cnt);
+	printf_nobench("tid %d: number of retry: %d, signals delivered: %u\n",
+		(int) gettid(), nr_retry, signals_delivered);
 	if (rseq_unregister_current_thread())
 		abort();
 	return NULL;
@@ -547,10 +528,8 @@ void *test_percpu_cmpxchg_thread_atomic(void *arg)
 			printf("tid %d: count %d\n", (int) gettid(), i);
 #endif
 	}
-	printf_nobench("tid %d: number of retry: %d, signals delivered: %u, nr_fallback %u, nr_fallback_wait %u\n",
-		(int) gettid(), nr_retry, signals_delivered,
-		__rseq_thread_state.fallback_cnt,
-		__rseq_thread_state.fallback_wait_cnt);
+	printf_nobench("tid %d: number of retry: %d, signals delivered: %u\n",
+		(int) gettid(), nr_retry, signals_delivered);
 	if (rseq_unregister_current_thread())
 		abort();
 	return NULL;
@@ -611,10 +590,8 @@ void *test_atomic_inc_thread(void *arg)
 			printf("tid %d: count %d\n", (int) gettid(), i);
 #endif
 	}
-	printf_nobench("tid %d: number of retry: %d, signals delivered: %u, nr_fallback %u, nr_fallback_wait %u\n",
-		(int) gettid(), nr_retry, signals_delivered,
-		__rseq_thread_state.fallback_cnt,
-		__rseq_thread_state.fallback_wait_cnt);
+	printf_nobench("tid %d: number of retry: %d, signals delivered: %u\n",
+		(int) gettid(), nr_retry, signals_delivered);
 	return NULL;
 }
 
@@ -671,10 +648,8 @@ void *test_baseline_inc_thread(void *arg)
 			printf("tid %d: count %d\n", (int) gettid(), i);
 #endif
 	}
-	printf_nobench("tid %d: number of retry: %d, signals delivered: %u, nr_fallback %u, nr_fallback_wait %u\n",
-		(int) gettid(), nr_retry, signals_delivered,
-		__rseq_thread_state.fallback_cnt,
-		__rseq_thread_state.fallback_wait_cnt);
+	printf_nobench("tid %d: number of retry: %d, signals delivered: %u\n",
+		(int) gettid(), nr_retry, signals_delivered);
 	return NULL;
 }
 
@@ -739,10 +714,8 @@ void *test_atomic_cmpxchg_thread(void *arg)
 			printf("tid %d: count %d\n", (int) gettid(), i);
 #endif
 	}
-	printf_nobench("tid %d: number of retry: %d, signals delivered: %u, nr_fallback %u, nr_fallback_wait %u\n",
-		(int) gettid(), nr_retry, signals_delivered,
-		__rseq_thread_state.fallback_cnt,
-		__rseq_thread_state.fallback_wait_cnt);
+	printf_nobench("tid %d: number of retry: %d, signals delivered: %u\n",
+		(int) gettid(), nr_retry, signals_delivered);
 	return NULL;
 }
 
@@ -789,35 +762,36 @@ void test_atomic_cmpxchg(void)
 int percpu_list_push(struct percpu_list *list, struct percpu_list_node *node)
 {
 	intptr_t *targetptr, newval, expect;
-	int cpu;
-#ifndef SKIP_FASTPATH
-	struct rseq_state rseq_state;
+	int cpu, ret;
 
+#ifndef SKIP_FASTPATH
 	/* Try fast path. */
-	rseq_state = rseq_start();
-	cpu = rseq_cpu_at_start(rseq_state);
+	cpu = rseq_current_cpu_raw();
+	if (unlikely(cpu < 0))
+		goto slowpath;
+	/* Load list->c[cpu].head with single-copy atomicity. */
+	expect = (intptr_t)READ_ONCE(list->c[cpu].head);
 	newval = (intptr_t)node;
 	targetptr = (intptr_t *)&list->c[cpu].head;
-	node->next = list->c[cpu].head;
-	if (unlikely(!rseq_finish(targetptr, newval, rseq_state)))
+	node->next = (struct percpu_list_node *)expect;
+	ret = rseq_cmpeqv_storev(targetptr, expect, newval, cpu);
+	if (likely(!ret))
+		return cpu;
 #endif
-	{
-		/* Fallback on cpu_op system call. */
-		for (;;) {
-			int ret;
-
-			cpu = rseq_current_cpu_raw();
-			/* Load list->c[cpu].head with single-copy atomicity. */
-			expect = (intptr_t)READ_ONCE(list->c[cpu].head);
-			newval = (intptr_t)node;
-			targetptr = (intptr_t *)&list->c[cpu].head;
-			node->next = (struct percpu_list_node *)expect;
-			ret = cpu_op_cmpstore(targetptr, &expect, &newval,
-				sizeof(intptr_t), cpu);
-			if (likely(!ret))
-				break;
-			assert(ret >= 0 || errno == EAGAIN);
-		}
+	/* Fallback on cpu_opv system call. */
+slowpath:
+	__attribute__((unused));
+	for (;;) {
+		cpu = rseq_current_cpu();
+		/* Load list->c[cpu].head with single-copy atomicity. */
+		expect = (intptr_t)READ_ONCE(list->c[cpu].head);
+		newval = (intptr_t)node;
+		targetptr = (intptr_t *)&list->c[cpu].head;
+		node->next = (struct percpu_list_node *)expect;
+		ret = cpu_op_cmpeqv_storev(targetptr, expect, newval, cpu);
+		if (likely(!ret))
+			break;
+		assert(ret >= 0 || errno == EAGAIN);
 	}
 	return cpu;
 }
@@ -829,49 +803,39 @@ int percpu_list_push(struct percpu_list *list, struct percpu_list_node *node)
  */
 struct percpu_list_node *percpu_list_pop(struct percpu_list *list)
 {
-	struct percpu_list_node *head, *next;
-	intptr_t *targetptr, newval, expect;
-	int cpu;
+	struct percpu_list_node *head;
+	int cpu, ret;
+
 #ifndef SKIP_FASTPATH
-	struct rseq_state rseq_state;
-
 	/* Try fast path. */
-	rseq_state = rseq_start();
-	cpu = rseq_cpu_at_start(rseq_state);
-	/* Load list->c[cpu].head with single-copy atomicity. */
-	head = READ_ONCE(list->c[cpu].head);
-	if (!head)
+	cpu = rseq_current_cpu_raw();
+	if (unlikely(cpu < 0))
+		goto slowpath;
+	ret = rseq_cmpnev_storeoffp_load((intptr_t *)&list->c[cpu].head,
+		(intptr_t)NULL,
+		offsetof(struct percpu_list_node, next),
+		(intptr_t *)&head, cpu);
+	if (likely(!ret))
+		return head;
+	if (ret > 0)
 		return NULL;
-	/* Load head->next with single-copy atomicity. */
-	next = READ_ONCE(head->next);
-	newval = (intptr_t)next;
-	targetptr = (intptr_t *)&list->c[cpu].head;
-	if (unlikely(!rseq_finish(targetptr, newval, rseq_state)))
 #endif
-	{
-		/* Fallback on cpu_op system call. */
-		for (;;) {
-			int ret;
-
-			cpu = rseq_current_cpu_raw();
-			/* Load list->c[cpu].head with single-copy atomicity. */
-			head = READ_ONCE(list->c[cpu].head);
-			if (!head)
-				return NULL;
-			expect = (intptr_t)head;
-			/* Load head->next with single-copy atomicity. */
-			next = READ_ONCE(head->next);
-			newval = (intptr_t)next;
-			targetptr = (intptr_t *)&list->c[cpu].head;
-			ret = cpu_op_2cmp1store(targetptr, &expect, &newval,
-				&head->next, &next,
-				sizeof(intptr_t), cpu);
-			if (likely(!ret))
-				break;
-			assert(ret >= 0 || errno == EAGAIN);
-		}
+	/* Fallback on cpu_opv system call. */
+	slowpath:
+		__attribute__((unused));
+	for (;;) {
+		cpu = rseq_current_cpu();
+		ret = cpu_op_cmpnev_storeoffp_load(
+			(intptr_t *)&list->c[cpu].head,
+			(intptr_t)NULL,
+			offsetof(struct percpu_list_node, next),
+			(intptr_t *)&head, cpu);
+		if (likely(!ret))
+			break;
+		if (ret > 0)
+			return NULL;
+		assert(ret >= 0 || errno == EAGAIN);
 	}
-
 	return head;
 }
 

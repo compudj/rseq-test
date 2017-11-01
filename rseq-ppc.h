@@ -23,6 +23,8 @@
  * SOFTWARE.
  */
 
+#define RSEQ_SIG	0x53053053
+
 #define smp_mb()	__asm__ __volatile__ ("sync" : : : "memory")
 #define smp_lwsync()	__asm__ __volatile__ ("lwsync" : : : "memory")
 #define smp_rmb()	smp_lwsync()
@@ -66,8 +68,8 @@ do {									\
 		".pushsection __rseq_table, \"aw\"\n\t" \
 		".balign 32\n\t" \
 		"3:\n\t" \
-		".quad 1f, 2f, 4f\n\t" \
 		".long 0x0, 0x0\n\t" \
+		".quad 1f, 2f-1f, 4f\n\t" \
 		".popsection\n\t" \
 		"1:\n\t" \
 		_setup \
@@ -75,7 +77,7 @@ do {									\
 		"lis %%r17, (3b)@highest\n\t" \
 		"ori %%r17, %%r17, (3b)@higher\n\t" \
 		"rldicr %%r17, %%r17, 32, 31\n\t" \
-		"oris %%r17, %%r17, (3b)@h\n\t" \
+		"oris %%r17, %%r17, (3b)@high\n\t" \
 		"ori %%r17, %%r17, (3b)@l\n\t" \
 		"std %%r17, 0(%[rseq_cs])\n\t" \
 		RSEQ_INJECT_ASM(2) \
@@ -173,7 +175,7 @@ do {									\
 		".balign 32\n\t" \
 		"3:\n\t" \
 		/* 32-bit only supported on BE */ \
-		".long 0x0, 1f, 0x0, 2f, 0x0, 4f, 0x0, 0x0\n\t" \
+		".long 0x0, 0x0, 0x0, 1f, 0x0, 2f-1f, 0x0, 4f\n\t" \
 		".popsection\n\t" \
 		"1:\n\t" \
 		_setup \

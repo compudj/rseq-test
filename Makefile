@@ -13,7 +13,7 @@ CPPFLAGS = -O2 -g -I./
 
 all: example-rseq-cpuid example-rseq-cpuid-lazy test-rseq-cpuid \
 	benchmark-rseq librseq.so libcpu-op.so libtest-linked-lib.so \
-	libtest-linked-lib2.so test-use-lib test-use-lib-define-tls-sym \
+	libtest-linked-lib2.so test-use-lib \
 	test-dlopen test-dlopen-dlclose
 
 example-rseq-cpuid: example-rseq-cpuid.c rseq.c rseq.h
@@ -73,6 +73,5 @@ clean:
 		test-use-lib \
 		libtest-linked-lib.so \
 		libtest-linked-lib2.so \
-		test-use-lib-define-tls-sym \
 		test-dlopen \
 		test-dlopen-dlclose

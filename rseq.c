@@ -29,21 +29,28 @@
 
 #define ARRAY_SIZE(arr)	(sizeof(arr) / sizeof((arr)[0]))
 
-DEFINE_RSEQ_ABI();
+__attribute__((tls_model("initial-exec"))) __thread
+volatile struct rseq __rseq_abi = {
+	.cpu_id = -1,
+};
 
-static int sys_rseq(volatile struct rseq *rseq_abi, int flags, uint32_t sig)
+static int sys_rseq(volatile struct rseq *rseq_abi, uint32_t rseq_len,
+		int flags, uint32_t sig)
 {
-	return syscall(__NR_rseq, rseq_abi, flags, sig);
+	return syscall(__NR_rseq, rseq_abi, rseq_len, flags, sig);
 }
 
 int rseq_register_current_thread(void)
 {
 	int rc;
 
-	rc = sys_rseq(&__rseq_abi, 0, RSEQ_SIG);
+	rc = sys_rseq(&__rseq_abi, sizeof(struct rseq), 0, RSEQ_SIG);
 	if (rc) {
-		fprintf(stderr, "Error: sys_rseq(...) failed(%d): %s\n",
-			errno, strerror(errno));
+		if (errno != EBUSY) {
+			fprintf(stderr, "Error: sys_rseq(...) failed(%d): %s\n",
+				errno, strerror(errno));
+			__rseq_abi.cpu_id = -2;
+		}
 		return -1;
 	}
 	assert(rseq_current_cpu() >= 0);
@@ -54,7 +61,8 @@ int rseq_unregister_current_thread(void)
 {
 	int rc;
 
-	rc = sys_rseq(&__rseq_abi, RSEQ_FLAG_UNREGISTER, RSEQ_SIG);
+	rc = sys_rseq(&__rseq_abi, sizeof(struct rseq),
+			RSEQ_FLAG_UNREGISTER, RSEQ_SIG);
 	if (rc) {
 		fprintf(stderr, "Error: sys_rseq(...) failed(%d): %s\n",
 			errno, strerror(errno));

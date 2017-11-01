@@ -30,32 +30,31 @@ static struct inc_test_data data;
 
 static void TESTNAME(void)
 {
-	struct rseq_state rseq_state;
 	intptr_t *targetptr, newval;
 	uintptr_t sum;
 	int i;
 
 	printf("counter increment\n");
 	for (i = 0; i < opt_reps; i++) {
-		int cpu;
+		int cpu, ret;
 
 		/* Try fast path. */
-		rseq_state = rseq_start();
-		cpu = rseq_cpu_at_start(rseq_state);
-		newval = (intptr_t)data.c[cpu].count + 1;
-		targetptr = (intptr_t *)&data.c[cpu].count;
-		if (unlikely(!rseq_finish(targetptr, newval, rseq_state))) {
-			for (;;) {
-				/* Fallback on cpu_op system call. */
-				int ret;
+		cpu = rseq_current_cpu_raw();
+		if (unlikely(cpu < 0))
+			goto slowpath;
+		ret = rseq_addv(&data.c[cpu].count, 1, cpu);
+		if (likely(!ret))
+			continue;
+	slowpath:
+		for (;;) {
+			/* Fallback on cpu_op system call. */
+			int ret;
 
-				cpu = rseq_current_cpu_raw();
-				ret = cpu_op_add(&data.c[cpu].count, 1,
-					sizeof(intptr_t), cpu);
-				if (likely(!ret))
-					break;
-				assert(ret >= 0 || errno == EAGAIN);
-			}
+			cpu = rseq_current_cpu();
+			ret = cpu_op_addv(&data.c[cpu].count, 1, cpu);
+			if (likely(!ret))
+				break;
+			assert(ret >= 0 || errno == EAGAIN);
 		}
 	}
 
