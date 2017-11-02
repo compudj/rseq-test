@@ -39,9 +39,7 @@ static void TESTNAME(void)
 		int cpu, ret;
 
 		/* Try fast path. */
-		cpu = rseq_current_cpu_raw();
-		if (unlikely(cpu < 0))
-			goto slowpath;
+		cpu = rseq_cpu_start();
 		ret = rseq_addv(&data.c[cpu].count, 1, cpu);
 		if (likely(!ret))
 			continue;
