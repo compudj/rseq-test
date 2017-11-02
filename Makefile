@@ -75,3 +75,4 @@ clean:
 		libtest-linked-lib2.so \
 		test-dlopen \
 		test-dlopen-dlclose
+	rm -rf remote/

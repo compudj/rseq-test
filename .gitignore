@@ -17,3 +17,4 @@ libtest-linked-lib2.so
 test-use-lib-define-tls-sym
 test-dlopen
 test-dlopen-dlclose
+remote/
