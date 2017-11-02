@@ -213,17 +213,18 @@ void *test_percpu_spinlock_thread(void *arg)
 	struct spinlock_thread_test_data *thread_data = arg;
 	struct spinlock_test_data *data = thread_data->data;
 	int cpu;
-	long long i;
+	long long i, reps;
 
 	if (!opt_disable_rseq && thread_data->reg
 			&& rseq_register_current_thread())
 		abort();
-	for (i = 0; i < thread_data->reps; i++) {
+	reps = thread_data->reps;
+	for (i = 0; i < reps; i++) {
 		cpu = rseq_percpu_lock(&data->lock);
 		data->c[cpu].count++;
 		rseq_percpu_unlock(&data->lock, cpu);
 #ifndef BENCHMARK
-		if (i != 0 && !(i % (thread_data->reps / 10)))
+		if (i != 0 && !(i % (reps / 10)))
 			printf("tid %d: count %lld\n", (int) gettid(), i);
 #endif
 	}
@@ -287,17 +288,18 @@ static pthread_mutex_t test_lock = PTHREAD_MUTEX_INITIALIZER;
 void *test_pthread_mutex_thread(void *arg)
 {
 	struct spinlock_thread_test_data *thread_data = arg;
-	long long i;
+	long long i, reps;
 
 	if (!opt_disable_rseq && thread_data->reg
 			&& rseq_register_current_thread())
 		abort();
-	for (i = 0; i < thread_data->reps; i++) {
+	reps = thread_data->reps;
+	for (i = 0; i < reps; i++) {
 		pthread_mutex_lock(&test_lock);
 		test_global_count++;
 		pthread_mutex_unlock(&test_lock);
 #ifndef BENCHMARK
-		if (i != 0 && !(i % (thread_data->reps / 10)))
+		if (i != 0 && !(i % (reps / 10)))
 			printf("tid %d: count %lld\n", (int) gettid(), i);
 #endif
 	}
@@ -353,12 +355,13 @@ void *test_percpu_inc_thread(void *arg)
 {
 	struct inc_thread_test_data *thread_data = arg;
 	struct inc_test_data *data = thread_data->data;
-	long long i;
+	long long i, reps;
 
 	if (!opt_disable_rseq && thread_data->reg
 			&& rseq_register_current_thread())
 		abort();
-	for (i = 0; i < thread_data->reps; i++) {
+	reps = thread_data->reps;
+	for (i = 0; i < reps; i++) {
 		int cpu, ret;
 
 #ifndef SKIP_FASTPATH
@@ -381,7 +384,7 @@ void *test_percpu_inc_thread(void *arg)
 	next:
 		__attribute__((unused));
 #ifndef BENCHMARK
-		if (i != 0 && !(i % (thread_data->reps / 10)))
+		if (i != 0 && !(i % (reps / 10)))
 			printf_verbose("tid %d: count %lld\n", (int) gettid(), i);
 #endif
 	}
@@ -438,18 +441,19 @@ void *test_percpu_inc_thread_atomic(void *arg)
 {
 	struct inc_thread_test_data *thread_data = arg;
 	struct inc_test_data *data = thread_data->data;
-	long long i;
+	long long i, reps;
 
 	if (!opt_disable_rseq && thread_data->reg
 			&& rseq_register_current_thread())
 		abort();
-	for (i = 0; i < thread_data->reps; i++) {
+	reps = thread_data->reps;
+	for (i = 0; i < reps; i++) {
 		int cpu = rseq_current_cpu_raw();
 
 		uatomic_inc(&data->c[cpu].count);
 
 #ifndef BENCHMARK
-		if (i != 0 && !(i % (thread_data->reps / 10)))
+		if (i != 0 && !(i % (reps / 10)))
 			printf("tid %d: count %lld\n", (int) gettid(), i);
 #endif
 	}
@@ -506,12 +510,13 @@ void *test_percpu_cmpxchg_thread_atomic(void *arg)
 {
 	struct inc_thread_test_data *thread_data = arg;
 	struct inc_test_data *data = thread_data->data;
-	long long i;
+	long long i, reps;
 
 	if (!opt_disable_rseq && thread_data->reg
 			&& rseq_register_current_thread())
 		abort();
-	for (i = 0; i < thread_data->reps; i++) {
+	reps = thread_data->reps;
+	for (i = 0; i < reps; i++) {
 		int cpu = rseq_current_cpu_raw();
 		uintptr_t res, prev = data->c[cpu].count;
 
@@ -524,7 +529,7 @@ void *test_percpu_cmpxchg_thread_atomic(void *arg)
 		}
 
 #ifndef BENCHMARK
-		if (i != 0 && !(i % (thread_data->reps / 10)))
+		if (i != 0 && !(i % (reps / 10)))
 			printf("tid %d: count %lld\n", (int) gettid(), i);
 #endif
 	}
@@ -580,14 +585,15 @@ void test_percpu_cmpxchg_atomic(void)
 void *test_atomic_inc_thread(void *arg)
 {
 	struct inc_thread_test_data *thread_data = arg;
-	int i;
+	long long i, reps;
 
-	for (i = 0; i < thread_data->reps; i++) {
+	reps = thread_data->reps;
+	for (i = 0; i < reps; i++) {
 		uatomic_inc(&test_global_count);
 
 #ifndef BENCHMARK
-		if (i != 0 && !(i % (thread_data->reps / 10)))
-			printf("tid %d: count %d\n", (int) gettid(), i);
+		if (i != 0 && !(i % (reps / 10)))
+			printf("tid %d: count %lld\n", (int) gettid(), i);
 #endif
 	}
 	printf_nobench("tid %d: number of retry: %d, signals delivered: %u\n",
@@ -638,13 +644,14 @@ void test_atomic_inc(void)
 void *test_baseline_inc_thread(void *arg)
 {
 	struct inc_thread_test_data *thread_data = arg;
-	long long i;
+	long long i, reps;
 
-	for (i = 0; i < thread_data->reps; i++) {
+	reps = thread_data->reps;
+	for (i = 0; i < reps; i++) {
 		test_global_count_volatile++;
 
 #ifndef BENCHMARK
-		if (i != 0 && !(i % (thread_data->reps / 10)))
+		if (i != 0 && !(i % (reps / 10)))
 			printf("tid %d: count %lld\n", (int) gettid(), i);
 #endif
 	}
@@ -696,9 +703,10 @@ void test_baseline_inc(void)
 void *test_atomic_cmpxchg_thread(void *arg)
 {
 	struct inc_thread_test_data *thread_data = arg;
-	long long i;
+	long long i, reps;
 
-	for (i = 0; i < thread_data->reps; i++) {
+	reps = thread_data->reps;
+	for (i = 0; i < reps; i++) {
 		uintptr_t res, prev = test_global_count;
 
 		for (;;) {
@@ -710,7 +718,7 @@ void *test_atomic_cmpxchg_thread(void *arg)
 		}
 
 #ifndef BENCHMARK
-		if (i != 0 && !(i % (thread_data->reps / 10)))
+		if (i != 0 && !(i % (reps / 10)))
 			printf("tid %d: count %lld\n", (int) gettid(), i);
 #endif
 	}
@@ -837,13 +845,14 @@ struct percpu_list_node *percpu_list_pop(struct percpu_list *list)
 
 void *test_percpu_list_thread(void *arg)
 {
-	long long i;
+	long long i, reps;
 	struct percpu_list *list = (struct percpu_list *)arg;
 
 	if (rseq_register_current_thread())
 		abort();
 
-	for (i = 0; i < opt_reps; i++) {
+	reps = opt_reps;
+	for (i = 0; i < reps; i++) {
 		struct percpu_list_node *node = percpu_list_pop(list);
 
 		if (opt_yield)
