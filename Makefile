@@ -10,7 +10,7 @@
 # the code was modified is included with the above copyright notice.
 
 CPPFLAGS = -O2 -g -I./ -I./remote/
-LDFLAGS = -L./ -pthread
+LDFLAGS = -L./ -pthread -Wl,-rpath=./
 
 all: example-rseq-cpuid example-rseq-cpuid-lazy test-rseq-cpuid \
 	benchmark-rseq librseq.so libcpu-op.so libtest-linked-lib.so \
@@ -20,10 +20,10 @@ all: example-rseq-cpuid example-rseq-cpuid-lazy test-rseq-cpuid \
 REMOTE_INCLUDES=$(wildcard remote/*.h)
 
 librseq.so: fetch remote/rseq.c ${REMOTE_INCLUDES}
-	$(CC) $(CFLAGS) $(LDFLAGS) $(CPPFLAGS) -shared -fpic remote/rseq.c -Wl,-rpath=./ -o $@
+	$(CC) $(CFLAGS) $(LDFLAGS) $(CPPFLAGS) -shared -fpic remote/rseq.c -o $@
 
 libcpu-op.so: fetch remote/cpu-op.c ${REMOTE_INCLUDES}
-	$(CC) $(CFLAGS) $(LDFLAGS) $(CPPFLAGS) -shared -fpic remote/cpu-op.c -Wl,-rpath=./ -o $@
+	$(CC) $(CFLAGS) $(LDFLAGS) $(CPPFLAGS) -shared -fpic remote/cpu-op.c -o $@
 
 example-rseq-cpuid: example-rseq-cpuid.c librseq.so ${REMOTE_INCLUDES}
 	$(CC) $(CFLAGS) $(LDFLAGS) $(CPPFLAGS) $< -lrseq -o $@
