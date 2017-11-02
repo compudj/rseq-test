@@ -10,51 +10,57 @@
 # the code was modified is included with the above copyright notice.
 
 CPPFLAGS = -O2 -g -I./
+LDFLAGS = -L./ -pthread
 
 all: example-rseq-cpuid example-rseq-cpuid-lazy test-rseq-cpuid \
 	benchmark-rseq librseq.so libcpu-op.so libtest-linked-lib.so \
 	libtest-linked-lib2.so test-use-lib \
 	test-dlopen test-dlopen-dlclose
 
-example-rseq-cpuid: example-rseq-cpuid.c rseq.c rseq.h
-	$(CC) $(CFLAGS) $(CPPFLAGS) -pthread -o $@ example-rseq-cpuid.c rseq.c
+REMOTE_INCLUDES=remote/*.h
 
-example-rseq-cpuid-lazy: example-rseq-cpuid-lazy.c rseq.c rseq.h
-	$(CC) $(CFLAGS) $(CPPFLAGS) -pthread -o $@ example-rseq-cpuid-lazy.c rseq.c
+librseq.so: fetch remote/rseq.c ${REMOTE_INCLUDES}
+	$(CC) $(CFLAGS) $(LDFLAGS) $(CPPFLAGS) -shared -fpic remote/rseq.c -Wl,rpath=./ -o $@
 
-test-rseq-cpuid: test-rseq-cpuid.c rseq.c rseq.h
-	$(CC) $(CFLAGS) $(CPPFLAGS) -pthread -o $@ test-rseq-cpuid.c rseq.c
+libcpu-op.so: fetch remote/cpu-op.c ${REMOTE_INCLUDES}
+	$(CC) $(CFLAGS) $(LDFLAGS) $(CPPFLAGS) -shared -fpic remote/cpu-op.c -Wl,rpath=./ -o $@
 
-benchmark-rseq: benchmark-rseq.c
-	$(CC) $(CFLAGS) $(CPPFLAGS) -DBENCHMARK -pthread -o $@ benchmark-rseq.c rseq.c cpu-op.c
+example-rseq-cpuid: example-rseq-cpuid.c librseq.so ${REMOTE_INCLUDES}
+	$(CC) $(CFLAGS) $(LDFLAGS) $(CPPFLAGS) $< -lrseq -o $@
 
-librseq.so: rseq.c rseq.h
-	$(CC) $(CFLAGS) $(CPPFLAGS) -shared -fpic -o $@ $<
+example-rseq-cpuid-lazy: example-rseq-cpuid-lazy.c ${REMOTE_INCLUDES} librseq.so
+	$(CC) $(CFLAGS) $(LDFLAGS) $(CPPFLAGS) $< -lrseq -o $@
 
-libcpu-op.so: cpu-op.c cpu-op.h
-	$(CC) $(CFLAGS) $(CPPFLAGS) -shared -fpic -o $@ $<
+test-rseq-cpuid: test-rseq-cpuid.c ${REMOTE_INCLUDES} librseq.so
+	$(CC) $(CFLAGS) $(LDFLAGS) $(CPPFLAGS) $< -lrseq -o $@
 
-libtest-linked-lib.so: test-linked-lib.c rseq.h cpu-op.h test-template.h librseq.so libcpu-op.so
-	$(CC) $(CFLAGS) $(CPPFLAGS) -shared -fpic -o $@ $< -L./ -lrseq -lcpu-op
+benchmark-rseq: benchmark-rseq.c ${REMOTE_INCLUDES} librseq.so libcpu-op.so
+	$(CC) $(CFLAGS) $(LDFLAGS) $(CPPFLAGS) -DBENCHMARK $< -lrseq -lcpu-op -o $@
 
-libtest-linked-lib2.so: test-linked-lib2.c rseq.h cpu-op.h test-template.h librseq.so libcpu-op.so
-	$(CC) $(CFLAGS) $(CPPFLAGS) -shared -fpic -o $@ $< -L./ -lrseq -lcpu-op
+libtest-linked-lib.so: test-linked-lib.c test-template.h ${REMOTE_INCLUDES} librseq.so libcpu-op.so
+	$(CC) $(CFLAGS) $(LDFLAGS) $(CPPFLAGS) -shared -fpic $< -lrseq -lcpu-op -o $@
 
-test-use-lib: test-use-lib.c rseq.h cpu-op.h test-template.h librseq.so libcpu-op.so libtest-linked-lib.so libtest-linked-lib2.so
-	$(CC) $(CFLAGS) $(CPPFLAGS) -pthread -o $@ test-use-lib.c -L./ -lrseq -lcpu-op \
-		-ltest-linked-lib -ltest-linked-lib2
+libtest-linked-lib2.so: test-linked-lib2.c test-template.h ${REMOTE_INCLUDES} librseq.so libcpu-op.so
+	$(CC) $(CFLAGS) $(LDFLAGS) $(CPPFLAGS) -shared -fpic $< -lrseq -lcpu-op -o $@
 
-test-use-lib-define-tls-sym: test-use-lib-define-tls-sym.c rseq.h cpu-op.h test-template.h librseq.so libcpu-op.so libtest-linked-lib.so libtest-linked-lib2.so
-	$(CC) $(CFLAGS) $(CPPFLAGS) -pthread -o $@ test-use-lib-define-tls-sym.c -L./ -lrseq -lcpu-op \
-		-ltest-linked-lib -ltest-linked-lib2
+test-use-lib: test-use-lib.c test-template.h ${REMOTE_INCLUDES} librseq.so libcpu-op.so libtest-linked-lib.so libtest-linked-lib2.so
+	$(CC) $(CFLAGS) $(LDFLAGS) $(CPPFLAGS) $< -lrseq -lcpu-op \
+		-ltest-linked-lib -ltest-linked-lib2 -o $@
+
+test-use-lib-define-tls-sym: test-use-lib-define-tls-sym.c test-template.h ${REMOTE_INCLUDES} librseq.so libcpu-op.so libtest-linked-lib.so libtest-linked-lib2.so
+	$(CC) $(CFLAGS) $(LDFLAGS) $(CPPFLAGS) $< -lrseq -lcpu-op \
+		-ltest-linked-lib -ltest-linked-lib2 -o $@
 
 test-dlopen: test-dlopen.c
-	$(CC) $(CFLAGS) $(CPPFLAGS) -pthread -o $@ test-dlopen.c -ldl
+	$(CC) $(CFLAGS) $(LDFLAGS) $(CPPFLAGS) $< -ldl -o $@
 
 test-dlopen-dlclose: test-dlopen-dlclose.c librseq.so
-	$(CC) $(CFLAGS) $(CPPFLAGS) -pthread -o $@ test-dlopen-dlclose.c -ldl -L./ -lrseq
+	$(CC) $(CFLAGS) $(LDFLAGS) $(CPPFLAGS) $< -ldl -lrseq -o $@
 
-.PHONY: clean
+.PHONY: clean fetch
+
+fetch:
+	./fetch.sh
 
 clean:
 	rm -f benchmark-cpuid-rseq \
