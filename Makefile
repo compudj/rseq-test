@@ -9,7 +9,7 @@
 # granted, provided the above notices are retained, and a notice that
 # the code was modified is included with the above copyright notice.
 
-CPPFLAGS = -O2 -g -I./
+CPPFLAGS = -O2 -g -I./ -I./remote/
 LDFLAGS = -L./ -pthread
 
 all: example-rseq-cpuid example-rseq-cpuid-lazy test-rseq-cpuid \
@@ -17,13 +17,13 @@ all: example-rseq-cpuid example-rseq-cpuid-lazy test-rseq-cpuid \
 	libtest-linked-lib2.so test-use-lib \
 	test-dlopen test-dlopen-dlclose
 
-REMOTE_INCLUDES=remote/*.h
+REMOTE_INCLUDES=$(wildcard remote/*.h)
 
 librseq.so: fetch remote/rseq.c ${REMOTE_INCLUDES}
-	$(CC) $(CFLAGS) $(LDFLAGS) $(CPPFLAGS) -shared -fpic remote/rseq.c -Wl,rpath=./ -o $@
+	$(CC) $(CFLAGS) $(LDFLAGS) $(CPPFLAGS) -shared -fpic remote/rseq.c -Wl,-rpath=./ -o $@
 
 libcpu-op.so: fetch remote/cpu-op.c ${REMOTE_INCLUDES}
-	$(CC) $(CFLAGS) $(LDFLAGS) $(CPPFLAGS) -shared -fpic remote/cpu-op.c -Wl,rpath=./ -o $@
+	$(CC) $(CFLAGS) $(LDFLAGS) $(CPPFLAGS) -shared -fpic remote/cpu-op.c -Wl,-rpath=./ -o $@
 
 example-rseq-cpuid: example-rseq-cpuid.c librseq.so ${REMOTE_INCLUDES}
 	$(CC) $(CFLAGS) $(LDFLAGS) $(CPPFLAGS) $< -lrseq -o $@
