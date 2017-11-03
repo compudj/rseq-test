@@ -195,6 +195,11 @@ static int rseq_percpu_lock(struct percpu_lock *lock)
 			break;
 		assert(ret >= 0 || errno == EAGAIN);
 	}
+	/*
+	 * Acquire semantic when taking lock after control dependency.
+	 * Matches rseq_smp_store_release().
+	 */
+	rseq_smp_acquire__after_ctrl_dep();
 	return cpu;
 }
 
@@ -203,9 +208,9 @@ static void rseq_percpu_unlock(struct percpu_lock *lock, int cpu)
 	assert(lock->c[cpu].v == 1);
 	/*
 	 * Release lock, with release semantic. Matches
-	 * smp_acquire__after_ctrl_dep().
+	 * rseq_smp_acquire__after_ctrl_dep().
 	 */
-	smp_store_release(&lock->c[cpu].v, 0);
+	rseq_smp_store_release(&lock->c[cpu].v, 0);
 }
 
 void *test_percpu_spinlock_thread(void *arg)
