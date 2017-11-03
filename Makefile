@@ -17,12 +17,15 @@ all: example-rseq-cpuid example-rseq-cpuid-lazy test-rseq-cpuid \
 	libtest-linked-lib2.so test-use-lib \
 	test-dlopen test-dlopen-dlclose
 
+remote/rseq.c: fetch
+remote/cpu-op.c: fetch
+
 REMOTE_INCLUDES=$(wildcard remote/*.h)
 
-librseq.so: fetch remote/rseq.c ${REMOTE_INCLUDES}
+librseq.so: remote/rseq.c ${REMOTE_INCLUDES}
 	$(CC) $(CFLAGS) $(LDFLAGS) $(CPPFLAGS) -shared -fpic remote/rseq.c -o $@
 
-libcpu-op.so: fetch remote/cpu-op.c ${REMOTE_INCLUDES}
+libcpu-op.so: remote/cpu-op.c ${REMOTE_INCLUDES}
 	$(CC) $(CFLAGS) $(LDFLAGS) $(CPPFLAGS) -shared -fpic remote/cpu-op.c -o $@
 
 example-rseq-cpuid: example-rseq-cpuid.c librseq.so ${REMOTE_INCLUDES}
