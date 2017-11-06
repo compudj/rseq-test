@@ -16,7 +16,7 @@
 
 #include <rseq.h>
 
-long v;
+intptr_t v;
 
 int main(int argc, char **argv)
 {
