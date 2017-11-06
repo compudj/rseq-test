@@ -13,6 +13,7 @@
 #include <signal.h>
 #include <errno.h>
 #include <limits.h>
+#include <inttypes.h>
 
 #include <rseq.h>
 
@@ -108,6 +109,6 @@ int main(int argc, char **argv)
 	if (ret)
 		goto end;
 end:
-	printf("total %ld\n", v);
+	printf("total %" PRIdPTR "\n", v);
 	return 0;
 }
