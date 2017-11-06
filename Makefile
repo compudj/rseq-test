@@ -15,7 +15,7 @@ LDFLAGS = -L./ -pthread -Wl,-rpath=./
 all: example-rseq-cpuid example-rseq-cpuid-lazy test-rseq-cpuid \
 	benchmark-rseq librseq.so libcpu-op.so libtest-linked-lib.so \
 	libtest-linked-lib2.so test-use-lib \
-	test-dlopen test-dlopen-dlclose
+	test-dlopen test-dlopen-dlclose test-many-rseq
 
 remote/rseq.c: fetch
 remote/cpu-op.c: fetch
@@ -39,6 +39,9 @@ test-rseq-cpuid: test-rseq-cpuid.c ${REMOTE_INCLUDES} librseq.so
 
 benchmark-rseq: benchmark-rseq.c ${REMOTE_INCLUDES} librseq.so libcpu-op.so
 	$(CC) $(CFLAGS) $(LDFLAGS) $(CPPFLAGS) -DBENCHMARK $< -lrseq -lcpu-op -o $@
+
+test-many-rseq: test-many-rseq.c ${REMOTE_INCLUDES} librseq.so libcpu-op.so
+	$(CC) $(CFLAGS) $(LDFLAGS) $(CPPFLAGS) $< -lrseq -lcpu-op -o $@
 
 libtest-linked-lib.so: test-linked-lib.c test-template.h ${REMOTE_INCLUDES} librseq.so libcpu-op.so
 	$(CC) $(CFLAGS) $(LDFLAGS) $(CPPFLAGS) -shared -fpic $< -lrseq -lcpu-op -o $@
