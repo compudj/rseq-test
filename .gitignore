@@ -19,4 +19,5 @@ test-dlopen
 test-dlopen-dlclose
 test-many-rseq
 test-membarrier-shared
+test-cpu-opv
 remote/

@@ -16,7 +16,7 @@ all: example-rseq-cpuid example-rseq-cpuid-lazy test-rseq-cpuid \
 	benchmark-rseq librseq.so libcpu-op.so libtest-linked-lib.so \
 	libtest-linked-lib2.so test-use-lib \
 	test-dlopen test-dlopen-dlclose test-many-rseq \
-	test-membarrier-shared
+	test-membarrier-shared test-cpu-opv
 
 remote/rseq.c: fetch
 remote/cpu-op.c: fetch
@@ -67,6 +67,9 @@ test-dlopen-dlclose: test-dlopen-dlclose.c librseq.so
 test-membarrier-shared: test-membarrier-shared.c
 	$(CC) $(CFLAGS) $(LDFLAGS) $(CPPFLAGS) $< -o $@
 
+test-cpu-opv: test-cpu-opv.c
+	$(CC) $(CFLAGS) $(LDFLAGS) $(CPPFLAGS) $< -lcpu-op -o $@
+
 .PHONY: clean fetch
 
 fetch:
@@ -91,5 +94,6 @@ clean:
 		libtest-linked-lib2.so \
 		test-dlopen \
 		test-dlopen-dlclose \
-		test-membarrier-shared
+		test-membarrier-shared \
+		test-cpu-opv
 	rm -rf remote/
