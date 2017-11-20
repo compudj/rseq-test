@@ -25,11 +25,12 @@ int main(int argc, char **argv)
 
 	if (rseq_register_current_thread())
 		abort();
-	cpu = rseq_cpu_start();
-	ret = rseq_addv(&v, 1, cpu);
-	if (ret)
-		goto end;
-end:
+
+	do {
+		cpu = rseq_cpu_start();
+		ret = rseq_addv(&v, 1, cpu);
+	} while (ret);
+
 	if (rseq_unregister_current_thread())
 		abort();
 	printf("total %" PRIdPTR "\n", v);
