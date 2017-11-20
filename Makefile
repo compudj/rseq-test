@@ -16,7 +16,7 @@ all: example-rseq-cpuid example-rseq-cpuid-lazy test-rseq-cpuid \
 	benchmark-rseq librseq.so libcpu-op.so libtest-linked-lib.so \
 	libtest-linked-lib2.so test-use-lib \
 	test-dlopen test-dlopen-dlclose test-many-rseq \
-	test-membarrier-shared test-cpu-opv
+	test-membarrier-shared test-cpu-opv test-rseq-progress
 
 remote/rseq.c: fetch
 remote/cpu-op.c: fetch
@@ -42,6 +42,9 @@ benchmark-rseq: benchmark-rseq.c ${REMOTE_INCLUDES} librseq.so libcpu-op.so
 	$(CC) $(CFLAGS) $(LDFLAGS) $(CPPFLAGS) -DBENCHMARK $< -lrseq -lcpu-op -o $@
 
 test-many-rseq: test-many-rseq.c ${REMOTE_INCLUDES} librseq.so libcpu-op.so
+	$(CC) $(CFLAGS) $(LDFLAGS) $(CPPFLAGS) $< -lrseq -lcpu-op -o $@
+
+test-rseq-progress: test-rseq-progress.c ${REMOTE_INCLUDES} librseq.so libcpu-op.so
 	$(CC) $(CFLAGS) $(LDFLAGS) $(CPPFLAGS) $< -lrseq -lcpu-op -o $@
 
 libtest-linked-lib.so: test-linked-lib.c test-template.h ${REMOTE_INCLUDES} librseq.so libcpu-op.so
@@ -95,5 +98,6 @@ clean:
 		test-dlopen \
 		test-dlopen-dlclose \
 		test-membarrier-shared \
-		test-cpu-opv
+		test-cpu-opv \
+		test-rseq-progress
 	rm -rf remote/
