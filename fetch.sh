@@ -19,3 +19,6 @@ curl -s -o ${BASEOUTPUT}/rseq.c  --create-dirs \
 	https://${BASEURL}/tools/testing/selftests/rseq/rseq.c
 curl -s -o ${BASEOUTPUT}/cpu-op.c  --create-dirs \
 	https://${BASEURL}/tools/testing/selftests/cpu-opv/cpu-op.c
+
+curl -s -o ${BASEOUTPUT}/percpu-op.h --create-dirs \
+	https://${BASEURL}/tools/testing/selftests/rseq/percpu-op.h
