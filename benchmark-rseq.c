@@ -181,7 +181,7 @@ static int rseq_percpu_lock(struct percpu_lock *lock)
 		cpu = rseq_cpu_start();
 		ret = rseq_cmpeqv_storev(&lock->c[cpu].v,
 				0, 1, cpu);
-		if (likely(!ret))
+		if (rseq_likely(!ret))
 			break;
 		if (ret > 0)
 			continue;	/* Retry. */
@@ -191,7 +191,7 @@ static int rseq_percpu_lock(struct percpu_lock *lock)
 		/* Fallback on cpu_opv system call. */
 		cpu = rseq_current_cpu();
 		ret = cpu_op_cmpeqv_storev(&lock->c[cpu].v, 0, 1, cpu);
-		if (likely(!ret))
+		if (rseq_likely(!ret))
 			break;
 		assert(ret >= 0 || errno == EAGAIN);
 	}
@@ -373,7 +373,7 @@ void *test_percpu_inc_thread(void *arg)
 		/* Try fast path. */
 		cpu = rseq_cpu_start();
 		ret = rseq_addv(&data->c[cpu].count, 1, cpu);
-		if (likely(!ret))
+		if (rseq_likely(!ret))
 			goto next;
 #endif
 	slowpath:
@@ -382,7 +382,7 @@ void *test_percpu_inc_thread(void *arg)
 			/* Fallback on cpu_opv system call. */
 			cpu = rseq_current_cpu();
 			ret = cpu_op_addv(&data->c[cpu].count, 1, cpu);
-			if (likely(!ret))
+			if (rseq_likely(!ret))
 				break;
 			assert(ret >= 0 || errno == EAGAIN);
 		}
@@ -781,12 +781,12 @@ int percpu_list_push(struct percpu_list *list, struct percpu_list_node *node)
 	/* Try fast path. */
 	cpu = rseq_cpu_start();
 	/* Load list->c[cpu].head with single-copy atomicity. */
-	expect = (intptr_t)READ_ONCE(list->c[cpu].head);
+	expect = (intptr_t)RSEQ_READ_ONCE(list->c[cpu].head);
 	newval = (intptr_t)node;
 	targetptr = (intptr_t *)&list->c[cpu].head;
 	node->next = (struct percpu_list_node *)expect;
 	ret = rseq_cmpeqv_storev(targetptr, expect, newval, cpu);
-	if (likely(!ret))
+	if (rseq_likely(!ret))
 		return cpu;
 #endif
 	/* Fallback on cpu_opv system call. */
@@ -795,12 +795,12 @@ slowpath:
 	for (;;) {
 		cpu = rseq_current_cpu();
 		/* Load list->c[cpu].head with single-copy atomicity. */
-		expect = (intptr_t)READ_ONCE(list->c[cpu].head);
+		expect = (intptr_t)RSEQ_READ_ONCE(list->c[cpu].head);
 		newval = (intptr_t)node;
 		targetptr = (intptr_t *)&list->c[cpu].head;
 		node->next = (struct percpu_list_node *)expect;
 		ret = cpu_op_cmpeqv_storev(targetptr, expect, newval, cpu);
-		if (likely(!ret))
+		if (rseq_likely(!ret))
 			break;
 		assert(ret >= 0 || errno == EAGAIN);
 	}
@@ -824,7 +824,7 @@ struct percpu_list_node *percpu_list_pop(struct percpu_list *list)
 		(intptr_t)NULL,
 		offsetof(struct percpu_list_node, next),
 		(intptr_t *)&head, cpu);
-	if (likely(!ret))
+	if (rseq_likely(!ret))
 		return head;
 	if (ret > 0)
 		return NULL;
@@ -839,7 +839,7 @@ struct percpu_list_node *percpu_list_pop(struct percpu_list *list)
 			(intptr_t)NULL,
 			offsetof(struct percpu_list_node, next),
 			(intptr_t *)&head, cpu);
-		if (likely(!ret))
+		if (rseq_likely(!ret))
 			break;
 		if (ret > 0)
 			return NULL;

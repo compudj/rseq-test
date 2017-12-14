@@ -41,7 +41,7 @@ static void TESTNAME(void)
 		/* Try fast path. */
 		cpu = rseq_cpu_start();
 		ret = rseq_addv(&data.c[cpu].count, 1, cpu);
-		if (likely(!ret))
+		if (rseq_likely(!ret))
 			continue;
 	slowpath:
 		for (;;) {
@@ -50,7 +50,7 @@ static void TESTNAME(void)
 
 			cpu = rseq_current_cpu();
 			ret = cpu_op_addv(&data.c[cpu].count, 1, cpu);
-			if (likely(!ret))
+			if (rseq_likely(!ret))
 				break;
 			assert(ret >= 0 || errno == EAGAIN);
 		}
