@@ -106,7 +106,7 @@ static void loop_parent(struct map_test *map_test)
 			break;
 		case MODE_MEMBARRIER:
 		case MODE_MEMBARRIER_MISSING_REGISTER:
-			if (membarrier(MEMBARRIER_CMD_SHARED_EXPEDITED, 0)) {
+			if (membarrier(MEMBARRIER_CMD_GLOBAL_EXPEDITED, 0)) {
 				perror("membarrier");
 				CMM_STORE_SHARED(map_test->killed, 1);
 				abort();
@@ -127,7 +127,7 @@ static void loop_child(struct map_test *map_test)
 
 	switch (mode) {
 	case MODE_MEMBARRIER:
-		if (membarrier(MEMBARRIER_CMD_REGISTER_SHARED_EXPEDITED, 0)) {
+		if (membarrier(MEMBARRIER_CMD_REGISTER_GLOBAL_EXPEDITED, 0)) {
 			perror("membarrier");
 			CMM_STORE_SHARED(map_test->killed, 1);
 			abort();
