@@ -73,6 +73,8 @@ static inline pid_t gettid(void)
 }
 #endif
 
+#define unlikely(x)	__builtin_expect(!!(x), 0)
+
 #ifdef CONFIG_RSEQ
 static const char *config_name = "rseq.cpu_id";
 #elif CONFIG_RSEQ_LAZY
