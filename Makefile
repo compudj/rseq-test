@@ -9,8 +9,8 @@
 # granted, provided the above notices are retained, and a notice that
 # the code was modified is included with the above copyright notice.
 
-CPPFLAGS = -O2 -g -I./ -I./remote/
-LDFLAGS = -L./ -pthread -Wl,-rpath=./
+CPPFLAGS += -O2 -g -I./ -I./remote/
+LDFLAGS += -L./ -pthread -Wl,-rpath=./
 
 all: example-rseq-cpuid example-rseq-cpuid-lazy test-rseq-cpuid \
 	benchmark-rseq librseq.so libcpu-op.so libtest-linked-lib.so \
