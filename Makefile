@@ -16,7 +16,8 @@ all: example-rseq-cpuid example-rseq-cpuid-lazy test-rseq-cpuid \
 	benchmark-rseq librseq.so libcpu-op.so libtest-linked-lib.so \
 	libtest-linked-lib2.so test-use-lib \
 	test-dlopen test-dlopen-dlclose test-many-rseq \
-	test-membarrier-global test-cpu-opv test-rseq-progress
+	test-membarrier-global test-cpu-opv test-rseq-progress \
+	test-rseq-adaptative-lock benchmark-rseq-adaptative-lock
 
 remote/rseq.c: fetch
 remote/cpu-op.c: fetch
@@ -46,6 +47,12 @@ test-many-rseq: test-many-rseq.c ${REMOTE_INCLUDES} librseq.so libcpu-op.so
 
 test-rseq-progress: test-rseq-progress.c ${REMOTE_INCLUDES} librseq.so libcpu-op.so
 	$(CC) $(CFLAGS) $(LDFLAGS) $(CPPFLAGS) $< -lrseq -lcpu-op -o $@
+
+test-rseq-adaptative-lock: test-rseq-adaptative-lock.c ${REMOTE_INCLUDES} librseq.so libcpu-op.so
+	$(CC) $(CFLAGS) $(LDFLAGS) $(CPPFLAGS) $< -lrseq -lcpu-op -o $@
+
+benchmark-rseq-adaptative-lock: test-rseq-adaptative-lock.c ${REMOTE_INCLUDES} librseq.so libcpu-op.so
+	$(CC) $(CFLAGS) $(LDFLAGS) $(CPPFLAGS) -DBENCHMARK $< -lrseq -lcpu-op -o $@
 
 libtest-linked-lib.so: test-linked-lib.c test-template.h ${REMOTE_INCLUDES} librseq.so libcpu-op.so
 	$(CC) $(CFLAGS) $(LDFLAGS) $(CPPFLAGS) -shared -fpic $< -lrseq -lcpu-op -o $@
@@ -99,5 +106,7 @@ clean:
 		test-dlopen-dlclose \
 		test-membarrier-global \
 		test-cpu-opv \
-		test-rseq-progress
+		test-rseq-progress \
+		test-rseq-adaptative-lock \
+		benchmark-rseq-adaptative-lock
 	rm -rf remote/

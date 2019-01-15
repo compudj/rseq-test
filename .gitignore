@@ -22,3 +22,5 @@ test-membarrier-shared
 test-cpu-opv
 test-rseq-progress
 remote/
+test-rseq-adaptative-lock
+benchmark-rseq-adaptative-lock
