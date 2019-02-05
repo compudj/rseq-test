@@ -16,7 +16,8 @@ all: example-rseq-cpuid example-rseq-cpuid-lazy test-rseq-cpuid \
 	benchmark-rseq librseq.so libcpu-op.so libtest-linked-lib.so \
 	libtest-linked-lib2.so test-use-lib \
 	test-dlopen test-dlopen-dlclose test-many-rseq \
-	test-membarrier-global test-cpu-opv test-rseq-progress
+	test-membarrier-global test-cpu-opv test-rseq-progress \
+	test-rseq-nodeid
 
 remote/rseq.c: fetch
 remote/cpu-op.c: fetch
@@ -36,6 +37,9 @@ example-rseq-cpuid-lazy: example-rseq-cpuid-lazy.c ${REMOTE_INCLUDES} librseq.so
 	$(CC) $(CFLAGS) $(LDFLAGS) $(CPPFLAGS) $< -lrseq -o $@
 
 test-rseq-cpuid: test-rseq-cpuid.c ${REMOTE_INCLUDES} librseq.so
+	$(CC) $(CFLAGS) $(LDFLAGS) $(CPPFLAGS) $< -lrseq -o $@
+
+test-rseq-nodeid: test-rseq-nodeid.c ${REMOTE_INCLUDES} librseq.so
 	$(CC) $(CFLAGS) $(LDFLAGS) $(CPPFLAGS) $< -lrseq -o $@
 
 benchmark-rseq: benchmark-rseq.c ${REMOTE_INCLUDES} librseq.so libcpu-op.so
@@ -90,6 +94,7 @@ clean:
 		example-rseq-cpuid \
 		example-rseq-cpuid-lazy \
 		test-rseq-cpuid \
+		test-rseq-nodeid \
 		librseq.so \
 		libcpu-op.so \
 		test-use-lib \
