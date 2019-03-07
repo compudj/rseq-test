@@ -32,6 +32,7 @@ static int opt_disable_rseq, opt_disable_mod = 0, opt_threads = 200;
 
 struct rseq_lock {
 	unsigned int state;	/* enum rseq_lock_state */
+	int cpu;
 	int spins;
 };
 
@@ -41,7 +42,11 @@ enum rseq_lock_state {
 	RSEQ_LOCK_STATE_LOCKED_CONTENDED = 2,
 };
 
-struct rseq_lock testlock;
+struct rseq_lock testlock = {
+	.state = RSEQ_LOCK_STATE_UNLOCKED,
+	.cpu = -1,
+	.spins = 0,
+};
 
 #ifndef BENCHMARK
 
@@ -92,6 +97,16 @@ int rseq_trylock(struct rseq_lock *lock)
 		"jz 6f\n\t"	/* Got lock. */
 		/* Set rbx = 0. (don't care about ZF). */
 		"decq %%rbx\n\t"
+		/*
+		 * Compare lock owner cpu id to current cpu id. If lock
+		 * owner grabbed the lock on the same cpu as ours, chances
+		 * are it's sitting on that CPU runqueue awaiting for us
+		 * to call futex and let it proceed. Don't busy-wait in that
+		 * scenario.
+		 */
+		"movq %[lock_owner_cpu], %%rcx\n\t"
+		"cmpq %[current_cpu_id], %%rcx\n\t"
+		"jz 4f\n\t"
 		"incl %[spins]\n\t"
 		"cmpl %[spins], %[max_spins]\n\t"
 		"je %l[spins_limit]\n\t"
@@ -112,12 +127,14 @@ int rseq_trylock(struct rseq_lock *lock)
 		"6:\n\t"
 		: /* gcc asm goto does not allow outputs */
 		: [rseq_cs]		"m" (__rseq_abi.rseq_cs),
+		  [current_cpu_id]	"m" (__rseq_abi.cpu_id),
 		  [v]			"m" (lock->state),
+		  [lock_owner_cpu]	"m" (lock->cpu),
 		  [spins]		"m" (spins),
 		  [max_spins]		"r" (max_spins),
 		  [expect]		"i" (RSEQ_LOCK_STATE_UNLOCKED),
 		  [newv]		"r" (RSEQ_LOCK_STATE_LOCKED)
-		: "memory", "cc", "rax", "rbx"
+		: "memory", "cc", "rax", "rbx", "rcx"
 		  RSEQ_INJECT_CLOBBER
 		: abort, spins_limit
 	);
@@ -199,6 +216,7 @@ void rseq_lock(struct rseq_lock *lock)
 {
 	if (caa_unlikely(rseq_trylock(&testlock)))
 		rseq_lock_slowpath(&testlock);
+	CMM_STORE_SHARED(lock->cpu, __rseq_abi.cpu_id_start);
 }
 
 static inline __attribute__((always_inline))
@@ -206,6 +224,7 @@ int rseq_unlock(struct rseq_lock *lock)
 {
 	unsigned int state;
 
+	CMM_STORE_SHARED(lock->cpu, -1);
 	state = uatomic_xchg(&lock->state, RSEQ_LOCK_STATE_UNLOCKED);
 	if (caa_unlikely(state == RSEQ_LOCK_STATE_LOCKED_CONTENDED)) {
 		/*
