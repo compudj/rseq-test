@@ -15,7 +15,7 @@
 #include <limits.h>
 #include <inttypes.h>
 
-#include <rseq.h>
+#include "rseq.h"
 
 intptr_t v;
 
