@@ -1,6 +1,6 @@
 #!/bin/sh
 
-BASEURL=raw.githubusercontent.com/compudj/linux-percpu-dev/rseq/dev-local/
+BASEURL=raw.githubusercontent.com/compudj/linux-percpu-dev/rseq/dev-local
 BASEOUTPUT=remote
 
 curl -s -o ${BASEOUTPUT}/rseq.h  --create-dirs \
