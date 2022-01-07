@@ -71,6 +71,7 @@ int rseq_trylock(struct rseq_lock *lock)
 
 	__asm__ __volatile__ goto (
 		RSEQ_ASM_DEFINE_TABLE(3, 1f, 2f, 4f) /* start, commit, abort */
+		"movl %[expect], %%eax\n\t"
 		"lock; cmpxchgl %[newv], %[v]\n\t"
 		"jz 6f\n\t"	/* Got uncontended lock. */
 
