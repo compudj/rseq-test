@@ -85,15 +85,6 @@ int rseq_trylock(struct rseq_lock *lock)
 
 		/* Handle lock contention with adaptative busy-spinning and futex. */
 
-		/*
-		 * Clear ZF before start of critical section. Only
-		 * lock; cmpxchg should modify the ZF within the rseq critical
-		 * section. Region where ZF needs to be taken into account has
-		 * rbx == 1.
-		 */
-		"xorq %%rbx, %%rbx\n\t"
-		/* Set rbx = 1. Clear ZF. */
-		"incq %%rbx\n\t"
 		/* Start rseq by storing table entry pointer into rseq_cs. */
 		RSEQ_ASM_STORE_RSEQ_CS(1, 3b, RSEQ_CS_OFFSET(%[rseq_abi]))
 		"5:\n\t"
@@ -103,14 +94,14 @@ int rseq_trylock(struct rseq_lock *lock)
 		 * Sets the ZF on success.
 		 */
 		"lock; cmpxchgl %[newv], %[v]\n\t"
+		"60:\n\t"	/* instruction after cmpxchg for which abort needs to check ZF. */
 		/*
 		 * cmpxchg is not the last instruction of this rseq. This
 		 * requires carefully handling the state of ZF, and comparing
-		 * its state on abort to check if cmpxchg has succeded.
+		 * its state on abort of abort-at-ip at label 60 to check if
+		 * cmpxchg has succeded.
 		 */
 		"jz %l[contended_lock_taken]\n\t"	/* Got lock. */
-		/* Set rbx = 0. (don't care about ZF). */
-		"decq %%rbx\n\t"
 		/*
 		 * Compare lock owner cpu id to current cpu id. If the lock
 		 * owner grabbed the lock on the same cpu as ours, chances
@@ -125,17 +116,16 @@ int rseq_trylock(struct rseq_lock *lock)
 		"cmpl %[spins], %[max_spins]\n\t"
 		"je %l[spins_limit]\n\t"
 		"rep; nop\n\t"	/* cpu_relax for busy loop. */
-		/* Set rbx = 1. Clear ZF. */
-		"incq %%rbx\n\t"
 		"jmp 5b\n\t"	/* retry */
 		"2:\n\t"
 		RSEQ_ASM_DEFINE_ABORT(4,
-			/* Got lock if ZF is set and rbx == 1. */
+			/* Got lock if ZF is set and abort-at-ip (rcx) == 60b. */
 			"jz 7f\n\t"
 			"jmp 8f\n\t"
 			"7:\n\t"
-			"test %%rbx, %%rbx\n\t"
-			"jnz %l[contended_lock_taken]\n\t"	/* Got lock. */
+			"lea 60b(%%rip), %%rax\n\t"
+			"cmpq %%rcx, %%rax\n\t"
+			"jz %l[contended_lock_taken]\n\t"	/* Got lock. */
 			"8:\n\t",
 			abort)
 		"6:\n\t"
@@ -147,7 +137,7 @@ int rseq_trylock(struct rseq_lock *lock)
 		  [max_spins]		"r" (max_spins),
 		  [expect]		"i" (RSEQ_LOCK_STATE_UNLOCKED),
 		  [newv]		"r" (RSEQ_LOCK_STATE_LOCKED)
-		: "memory", "cc", "rax", "rbx", "rcx"
+		: "memory", "cc", "rax", "rcx"
 		  RSEQ_INJECT_CLOBBER
 		: contended_lock_taken, abort, spins_limit
 	);
