@@ -120,7 +120,6 @@ static __thread unsigned int yield_mod_cnt, nr_abort;
 #endif /* BENCHMARK */
 
 #include "rseq.h"
-#include "cpu-op.h"
 
 struct percpu_lock_entry {
 	intptr_t v;
@@ -167,126 +166,6 @@ struct percpu_list_entry {
 struct percpu_list {
 	struct percpu_list_entry c[CPU_SETSIZE];
 };
-
-/* A simple percpu spinlock.  Returns the cpu lock was acquired on. */
-static int rseq_percpu_lock(struct percpu_lock *lock)
-{
-	int cpu;
-
-	for (;;) {
-		int ret;
-
-#ifndef SKIP_FASTPATH
-		/* Try fast path. */
-		cpu = rseq_cpu_start();
-		ret = rseq_cmpeqv_storev(&lock->c[cpu].v,
-				0, 1, cpu);
-		if (rseq_likely(!ret))
-			break;
-		if (ret > 0)
-			continue;	/* Retry. */
-#endif
-	slowpath:
-		__attribute__((unused));
-		/* Fallback on cpu_opv system call. */
-		cpu = rseq_current_cpu();
-		ret = cpu_op_cmpeqv_storev(&lock->c[cpu].v, 0, 1, cpu);
-		if (rseq_likely(!ret))
-			break;
-		assert(ret >= 0 || errno == EAGAIN);
-	}
-	/*
-	 * Acquire semantic when taking lock after control dependency.
-	 * Matches rseq_smp_store_release().
-	 */
-	rseq_smp_acquire__after_ctrl_dep();
-	return cpu;
-}
-
-static void rseq_percpu_unlock(struct percpu_lock *lock, int cpu)
-{
-	assert(lock->c[cpu].v == 1);
-	/*
-	 * Release lock, with release semantic. Matches
-	 * rseq_smp_acquire__after_ctrl_dep().
-	 */
-	rseq_smp_store_release(&lock->c[cpu].v, 0);
-}
-
-void *test_percpu_spinlock_thread(void *arg)
-{
-	struct spinlock_thread_test_data *thread_data = arg;
-	struct spinlock_test_data *data = thread_data->data;
-	int cpu;
-	long long i, reps;
-
-	if (!opt_disable_rseq && thread_data->reg
-			&& rseq_register_current_thread())
-		abort();
-	reps = thread_data->reps;
-	for (i = 0; i < reps; i++) {
-		cpu = rseq_percpu_lock(&data->lock);
-		data->c[cpu].count++;
-		rseq_percpu_unlock(&data->lock, cpu);
-#ifndef BENCHMARK
-		if (i != 0 && !(i % (reps / 10)))
-			printf("tid %d: count %lld\n", (int) gettid(), i);
-#endif
-	}
-	printf_nobench("tid %d: number of rseq abort: %d, signals delivered: %u\n",
-		(int) gettid(), nr_abort, signals_delivered);
-	if (rseq_unregister_current_thread())
-		abort();
-	return NULL;
-}
-
-/*
- * A simple test which implements a sharded counter using a per-cpu
- * lock.  Obviously real applications might prefer to simply use a
- * per-cpu increment; however, this is reasonable for a test and the
- * lock can be extended to synchronize more complicated operations.
- */
-void test_percpu_spinlock(void)
-{
-	const int num_threads = opt_threads;
-	int i, ret;
-	uintptr_t sum;
-	pthread_t test_threads[num_threads];
-	struct spinlock_test_data data;
-	struct spinlock_thread_test_data thread_data[num_threads];
-
-	memset(&data, 0, sizeof(data));
-	for (i = 0; i < num_threads; i++) {
-		thread_data[i].reps = opt_reps;
-		if (opt_disable_mod <= 0 || (i % opt_disable_mod))
-			thread_data[i].reg = 1;
-		else
-			thread_data[i].reg = 0;
-		thread_data[i].data = &data;
-		ret = pthread_create(&test_threads[i], NULL,
-			test_percpu_spinlock_thread, &thread_data[i]);
-		if (ret) {
-			errno = ret;
-			perror("pthread_create");
-			abort();
-		}
-	}
-
-	for (i = 0; i < num_threads; i++) {
-		pthread_join(test_threads[i], NULL);
-		if (ret) {
-			errno = ret;
-			perror("pthread_join");
-			abort();
-		}
-	}
-
-	sum = 0;
-	for (i = 0; i < CPU_SETSIZE; i++)
-		sum += data.c[i].count;
-
-	assert(sum == (uintptr_t)opt_reps * num_threads);
-}
 
 static pthread_mutex_t test_lock = PTHREAD_MUTEX_INITIALIZER;
 
@@ -352,92 +231,6 @@ void test_pthread_mutex(void)
 	}
 
 	sum = test_global_count;
-
-	assert(sum == (uintptr_t)opt_reps * num_threads);
-}
-
-void *test_percpu_inc_thread(void *arg)
-{
-	struct inc_thread_test_data *thread_data = arg;
-	struct inc_test_data *data = thread_data->data;
-	long long i, reps;
-
-	if (!opt_disable_rseq && thread_data->reg
-			&& rseq_register_current_thread())
-		abort();
-	reps = thread_data->reps;
-	for (i = 0; i < reps; i++) {
-		int cpu, ret;
-
-#ifndef SKIP_FASTPATH
-		/* Try fast path. */
-		cpu = rseq_cpu_start();
-		ret = rseq_addv(&data->c[cpu].count, 1, cpu);
-		if (rseq_likely(!ret))
-			goto next;
-#endif
-	slowpath:
-		__attribute__((unused));
-		for (;;) {
-			/* Fallback on cpu_opv system call. */
-			cpu = rseq_current_cpu();
-			ret = cpu_op_addv(&data->c[cpu].count, 1, cpu);
-			if (rseq_likely(!ret))
-				break;
-			assert(ret >= 0 || errno == EAGAIN);
-		}
-	next:
-		__attribute__((unused));
-#ifndef BENCHMARK
-		if (i != 0 && !(i % (reps / 10)))
-			printf_verbose("tid %d: count %lld\n", (int) gettid(), i);
-#endif
-	}
-	printf_nobench("tid %d: number of retry: %d, signals delivered: %u\n",
-		(int) gettid(), nr_retry, signals_delivered);
-	if (rseq_unregister_current_thread())
-		abort();
-	return NULL;
-}
-
-void test_percpu_inc(void)
-{
-	const int num_threads = opt_threads;
-	int i, ret;
-	uintptr_t sum;
-	pthread_t test_threads[num_threads];
-	struct inc_test_data data;
-	struct inc_thread_test_data thread_data[num_threads];
-
-	memset(&data, 0, sizeof(data));
-	for (i = 0; i < num_threads; i++) {
-		thread_data[i].reps = opt_reps;
-		if (opt_disable_mod <= 0 || (i % opt_disable_mod))
-			thread_data[i].reg = 1;
-		else
-			thread_data[i].reg = 0;
-		thread_data[i].data = &data;
-		ret = pthread_create(&test_threads[i], NULL,
-			test_percpu_inc_thread, &thread_data[i]);
-		if (ret) {
-			errno = ret;
-			perror("pthread_create");
-			abort();
-		}
-	}
-
-	for (i = 0; i < num_threads; i++) {
-		pthread_join(test_threads[i], NULL);
-		if (ret) {
-			errno = ret;
-			perror("pthread_join");
-			abort();
-		}
-	}
-
-	sum = 0;
-	for (i = 0; i < CPU_SETSIZE; i++)
-		sum += data.c[i].count;
 
 	assert(sum == (uintptr_t)opt_reps * num_threads);
 }
@@ -772,180 +565,6 @@ void test_atomic_cmpxchg(void)
 	assert(sum == (uintptr_t)opt_reps * num_threads);
 }
 
-int percpu_list_push(struct percpu_list *list, struct percpu_list_node *node)
-{
-	intptr_t *targetptr, newval, expect;
-	int cpu, ret;
-
-#ifndef SKIP_FASTPATH
-	/* Try fast path. */
-	cpu = rseq_cpu_start();
-	/* Load list->c[cpu].head with single-copy atomicity. */
-	expect = (intptr_t)RSEQ_READ_ONCE(list->c[cpu].head);
-	newval = (intptr_t)node;
-	targetptr = (intptr_t *)&list->c[cpu].head;
-	node->next = (struct percpu_list_node *)expect;
-	ret = rseq_cmpeqv_storev(targetptr, expect, newval, cpu);
-	if (rseq_likely(!ret))
-		return cpu;
-#endif
-	/* Fallback on cpu_opv system call. */
-slowpath:
-	__attribute__((unused));
-	for (;;) {
-		cpu = rseq_current_cpu();
-		/* Load list->c[cpu].head with single-copy atomicity. */
-		expect = (intptr_t)RSEQ_READ_ONCE(list->c[cpu].head);
-		newval = (intptr_t)node;
-		targetptr = (intptr_t *)&list->c[cpu].head;
-		node->next = (struct percpu_list_node *)expect;
-		ret = cpu_op_cmpeqv_storev(targetptr, expect, newval, cpu);
-		if (rseq_likely(!ret))
-			break;
-		assert(ret >= 0 || errno == EAGAIN);
-	}
-	return cpu;
-}
-
-/*
- * Unlike a traditional lock-less linked list; the availability of a
- * rseq primitive allows us to implement pop without concerns over
- * ABA-type races.
- */
-struct percpu_list_node *percpu_list_pop(struct percpu_list *list)
-{
-	struct percpu_list_node *head;
-	int cpu, ret;
-
-#ifndef SKIP_FASTPATH
-	/* Try fast path. */
-	cpu = rseq_cpu_start();
-	ret = rseq_cmpnev_storeoffp_load((intptr_t *)&list->c[cpu].head,
-		(intptr_t)NULL,
-		offsetof(struct percpu_list_node, next),
-		(intptr_t *)&head, cpu);
-	if (rseq_likely(!ret))
-		return head;
-	if (ret > 0)
-		return NULL;
-#endif
-	/* Fallback on cpu_opv system call. */
-	slowpath:
-		__attribute__((unused));
-	for (;;) {
-		cpu = rseq_current_cpu();
-		ret = cpu_op_cmpnev_storeoffp_load(
-			(intptr_t *)&list->c[cpu].head,
-			(intptr_t)NULL,
-			offsetof(struct percpu_list_node, next),
-			(intptr_t *)&head, cpu);
-		if (rseq_likely(!ret))
-			break;
-		if (ret > 0)
-			return NULL;
-		assert(ret >= 0 || errno == EAGAIN);
-	}
-	return head;
-}
-
-void *test_percpu_list_thread(void *arg)
-{
-	long long i, reps;
-	struct percpu_list *list = (struct percpu_list *)arg;
-
-	if (rseq_register_current_thread())
-		abort();
-
-	reps = opt_reps;
-	for (i = 0; i < reps; i++) {
-		struct percpu_list_node *node = percpu_list_pop(list);
-
-		if (opt_yield)
-			sched_yield();  /* encourage shuffling */
-		if (node)
-			percpu_list_push(list, node);
-	}
-
-	if (rseq_unregister_current_thread())
-		abort();
-
-	return NULL;
-}
-
-/* Simultaneous modification to a per-cpu linked list from many threads.  */
-void test_percpu_list(void)
-{
-	const int num_threads = opt_threads;
-	int i, j, ret;
-	intptr_t sum = 0, expected_sum = 0;
-	struct percpu_list list;
-	pthread_t test_threads[num_threads];
-	cpu_set_t allowed_cpus;
-
-	memset(&list, 0, sizeof(list));
-
-	/* Generate list entries for every usable cpu. */
-	sched_getaffinity(0, sizeof(allowed_cpus), &allowed_cpus);
-	for (i = 0; i < CPU_SETSIZE; i++) {
-		if (!CPU_ISSET(i, &allowed_cpus))
-			continue;
-		for (j = 1; j <= 100; j++) {
-			struct percpu_list_node *node;
-
-			expected_sum += j;
-
-			node = malloc(sizeof(*node));
-			assert(node);
-			node->data = j;
-			node->next = list.c[i].head;
-			list.c[i].head = node;
-		}
-	}
-
-	for (i = 0; i < num_threads; i++) {
-		ret = pthread_create(&test_threads[i], NULL,
-			test_percpu_list_thread, &list);
-		if (ret) {
-			errno = ret;
-			perror("pthread_create");
-			abort();
-		}
-	}
-
-	for (i = 0; i < num_threads; i++) {
-		pthread_join(test_threads[i], NULL);
-		if (ret) {
-			errno = ret;
-			perror("pthread_join");
-			abort();
-		}
-	}
-
-	for (i = 0; i < CPU_SETSIZE; i++) {
-		cpu_set_t pin_mask;
-		struct percpu_list_node *node;
-
-		if (!CPU_ISSET(i, &allowed_cpus))
-			continue;
-
-		CPU_ZERO(&pin_mask);
-		CPU_SET(i, &pin_mask);
-		sched_setaffinity(0, sizeof(pin_mask), &pin_mask);
-
-		while ((node = percpu_list_pop(&list))) {
-			sum += node->data;
-			free(node);
-		}
-	}
-
-	/*
-	 * All entries should now be accounted for (unless some external
-	 * actor is interfering with our allowed affinity while this
-	 * test is running).
-	 */
-	assert(sum == expected_sum);
-}
-
 static void test_signal_interrupt_handler(int signo)
 {
 	signals_delivered++;
@@ -1149,11 +768,11 @@ int main(int argc, char **argv)
 	switch (opt_test) {
 	case 's':
 		printf_nobench("spinlock\n");
-		test_percpu_spinlock();
+		abort();
 		break;
 	case 'l':
 		printf_nobench("linked list\n");
-		test_percpu_list();
+		abort();
 		break;
 	case 'b':
 		if (opt_threads > 1) {
@@ -1165,7 +784,7 @@ int main(int argc, char **argv)
 		break;
 	case 'i':
 		printf_nobench("counter increment\n");
-		test_percpu_inc();
+		abort();
 		break;
 	case 'M':
 		printf_nobench("pthread mutex\n");

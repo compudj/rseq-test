@@ -13,7 +13,7 @@ CFLAGS += -O2 -g -I./ -I./remote/
 LDFLAGS += -L./ -pthread -Wl,-rpath=./
 
 all: example-rseq-cpuid example-rseq-cpuid-lazy test-rseq-cpuid \
-	librseq.so \
+	librseq.so benchmark-rseq \
 	test-rseq-adaptative-lock benchmark-rseq-adaptative-lock
 
 remote/rseq.c: fetch
@@ -22,6 +22,9 @@ REMOTE_INCLUDES=$(wildcard remote/*.h)
 
 librseq.so: remote/rseq.c ${REMOTE_INCLUDES}
 	$(CC) $(CFLAGS) $(LDFLAGS) $(CPPFLAGS) -shared -fpic remote/rseq.c -o $@
+
+benchmark-rseq: benchmark-rseq.c ${REMOTE_INCLUDES} librseq.so
+	$(CC) $(CFLAGS) $(LDFLAGS) $(CPPFLAGS) -DBENCHMARK $< -lrseq -o $@
 
 example-rseq-cpuid: example-rseq-cpuid.c librseq.so ${REMOTE_INCLUDES}
 	$(CC) $(CFLAGS) $(LDFLAGS) $(CPPFLAGS) $< -lrseq -o $@
