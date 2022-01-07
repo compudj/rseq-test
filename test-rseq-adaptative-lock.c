@@ -86,7 +86,7 @@ int rseq_trylock(struct rseq_lock *lock)
 		/* Set rbx = 1. Clear ZF. */
 		"incq %%rbx\n\t"
 		/* Start rseq by storing table entry pointer into rseq_cs. */
-		RSEQ_ASM_STORE_RSEQ_CS(1, 3b, rseq_cs)
+		RSEQ_ASM_STORE_RSEQ_CS(1, 3b, RSEQ_CS_OFFSET(%[rseq_abi]))
 		"5:\n\t"
 		"movl %[expect], %%eax\n\t"
 		/*
@@ -110,7 +110,7 @@ int rseq_trylock(struct rseq_lock *lock)
 		 * that scenario.
 		 */
 		"movq %[lock_owner_cpu], %%rcx\n\t"
-		"cmpq %[current_cpu_id], %%rcx\n\t"
+		"cmpq " __rseq_str(RSEQ_CPU_ID_OFFSET(%[rseq_abi])) ", %%rcx\n\t"
 		"jz 4f\n\t"
 		"incl %[spins]\n\t"
 		"cmpl %[spins], %[max_spins]\n\t"
@@ -131,8 +131,7 @@ int rseq_trylock(struct rseq_lock *lock)
 			abort)
 		"6:\n\t"
 		: /* gcc asm goto does not allow outputs */
-		: [rseq_cs]		"m" (__rseq_abi.rseq_cs),
-		  [current_cpu_id]	"m" (__rseq_abi.cpu_id),
+		: [rseq_abi]		"r" (&__rseq_abi),
 		  [v]			"m" (lock->state),
 		  [lock_owner_cpu]	"m" (lock->cpu),
 		  [spins]		"m" (spins),
