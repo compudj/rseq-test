@@ -119,10 +119,14 @@ int rseq_trylock(struct rseq_lock *lock)
 		"jmp 5b\n\t"	/* retry */
 		"2:\n\t"
 		RSEQ_ASM_DEFINE_ABORT(4,
-			/* Got lock if ZF is set and abort-at-ip (rcx) == 60b. */
+			/* Got lock if ZF is set and abort-at-ip == 60b. */
+			/* abort-at-ip must be pop from the stack. */
+			"popq %%rcx\n\t"	/* pop does not affect flags. */
 			"jz 7f\n\t"
+			"addq $128, %%rsp\n\t"	/* x86-64 redzone */
 			"jmp 8f\n\t"
 			"7:\n\t"
+			"addq $128, %%rsp\n\t"	/* x86-64 redzone */
 			"lea 60b(%%rip), %%rax\n\t"
 			"cmpq %%rcx, %%rax\n\t"
 			"jz %l[contended_lock_taken]\n\t"	/* Got lock. */
