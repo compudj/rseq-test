@@ -52,7 +52,7 @@ struct rseq_lock testlock = {
 
 #define printf_nobench(fmt, ...)	printf(fmt, ## __VA_ARGS__)
 
-int success, failures, reached_limit;
+int uncontended_lock_taken, contended_lock_taken, failures, reached_limit;
 
 #else
 
@@ -71,6 +71,11 @@ int rseq_trylock(struct rseq_lock *lock)
 
 	__asm__ __volatile__ goto (
 		RSEQ_ASM_DEFINE_TABLE(3, 1f, 2f, 4f) /* start, commit, abort */
+		"lock; cmpxchgl %[newv], %[v]\n\t"
+		"jz 6f\n\t"	/* Got uncontended lock. */
+
+		/* Handle lock contention with adaptative busy-spinning and futex. */
+
 		/*
 		 * Clear ZF before start of critical section. Only
 		 * lock; cmpxchg should modify the ZF within the rseq critical
@@ -94,15 +99,15 @@ int rseq_trylock(struct rseq_lock *lock)
 		 * requires carefully handling the state of ZF, and comparing
 		 * its state on abort to check if cmpxchg has succeded.
 		 */
-		"jz 6f\n\t"	/* Got lock. */
+		"jz %l[contended_lock_taken]\n\t"	/* Got lock. */
 		/* Set rbx = 0. (don't care about ZF). */
 		"decq %%rbx\n\t"
 		/*
-		 * Compare lock owner cpu id to current cpu id. If lock
+		 * Compare lock owner cpu id to current cpu id. If the lock
 		 * owner grabbed the lock on the same cpu as ours, chances
 		 * are it's sitting on that CPU runqueue awaiting for us
-		 * to call futex and let it proceed. Don't busy-wait in that
-		 * scenario.
+		 * to call futex wait and let it proceed. Don't busy-wait in
+		 * that scenario.
 		 */
 		"movq %[lock_owner_cpu], %%rcx\n\t"
 		"cmpq %[current_cpu_id], %%rcx\n\t"
@@ -136,15 +141,21 @@ int rseq_trylock(struct rseq_lock *lock)
 		  [newv]		"r" (RSEQ_LOCK_STATE_LOCKED)
 		: "memory", "cc", "rax", "rbx", "rcx"
 		  RSEQ_INJECT_CLOBBER
-		: abort, spins_limit
+		: contended_lock_taken, abort, spins_limit
 	);
+	/* Uncontended lock taken */
+#ifndef BENCHMARK
+	uatomic_inc(&uncontended_lock_taken);
+#endif
+	return 0;
+contended_lock_taken:
 	/*
-	 * On success, move spins target towards the number of spins loops that
-	 * led us to succeed.
+	 * On contended lock taken, move spins target towards the number of
+	 * spins loops that led us to succeed.
 	 */
 	RSEQ_WRITE_ONCE(lock->spins, fetch_spins + ((spins - fetch_spins) / 8));
 #ifndef BENCHMARK
-	uatomic_inc(&success);
+	uatomic_inc(&contended_lock_taken);
 #endif
 	return 0;
 abort:
@@ -264,10 +275,11 @@ void *test_adaptative_lock_thread(void *arg)
 		rseq_unlock(&testlock);
 #ifndef BENCHMARK
 		if (i != 0 && !(i % (reps / 10)))
-			printf("tid %d: count %lld spins: %d success %d failures %d limit %d\n",
+			printf("tid: %d: count: %lld spins: %d uncontended lock taken: %d contended lock taken: %d failures: %d limit: %d\n",
 				(int) gettid(), i,
 				RSEQ_READ_ONCE(testlock.spins),
-				RSEQ_READ_ONCE(success),
+				RSEQ_READ_ONCE(uncontended_lock_taken),
+				RSEQ_READ_ONCE(contended_lock_taken),
 				RSEQ_READ_ONCE(failures),
 				RSEQ_READ_ONCE(reached_limit));
 #endif
