@@ -60,6 +60,8 @@ int uncontended_lock_taken, contended_lock_taken, failures, reached_limit;
 
 #endif /* BENCHMARK */
 
+#define ASM_RSEQ_CS_FLAG_ABORT_AT_IP	(1U << 3)
+
 /* x86_64 */
 static inline __attribute__((always_inline))
 int rseq_trylock(struct rseq_lock *lock)
@@ -70,7 +72,7 @@ int rseq_trylock(struct rseq_lock *lock)
 	max_spins = fetch_spins * 2 + 10;
 
 	__asm__ __volatile__ goto (
-		RSEQ_ASM_DEFINE_TABLE(3, 1f, 2f, 4f) /* start, commit, abort */
+		__RSEQ_ASM_DEFINE_TABLE(3, 0x0, ASM_RSEQ_CS_FLAG_ABORT_AT_IP, 1f, (2f - 1f), 4f) /* start, post_commit_offset, abort */
 		"movl %[expect], %%eax\n\t"
 		"lock; cmpxchgl %[newv], %[v]\n\t"
 		"jz 6f\n\t"	/* Got uncontended lock. */
@@ -112,7 +114,7 @@ int rseq_trylock(struct rseq_lock *lock)
 		 */
 		"movq %[lock_owner_cpu], %%rcx\n\t"
 		"cmpq " __rseq_str(RSEQ_CPU_ID_OFFSET(%[rseq_abi])) ", %%rcx\n\t"
-		"jz 4f\n\t"
+		"jz %l[abort]\n\t"
 		"incl %[spins]\n\t"
 		"cmpl %[spins], %[max_spins]\n\t"
 		"je %l[spins_limit]\n\t"
