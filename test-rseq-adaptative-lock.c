@@ -126,7 +126,7 @@ int rseq_trylock(struct rseq_lock *lock)
 			"jmp 8f\n\t"
 			"7:\n\t"
 			"test %%rbx, %%rbx\n\t"
-			"jnz 6f\n\t"	/* Got lock. */
+			"jnz %l[contended_lock_taken]\n\t"	/* Got lock. */
 			"8:\n\t",
 			abort)
 		"6:\n\t"
