@@ -48,6 +48,12 @@ struct rseq_lock testlock = {
 	.spins = 0,
 };
 
+static int sys_rseq(struct rseq *rseq_abi, uint32_t rseq_len,
+		int flags, uint32_t sig)
+{
+        return syscall(__NR_rseq, rseq_abi, rseq_len, flags, sig);
+}
+
 #ifndef BENCHMARK
 
 #define printf_nobench(fmt, ...)	printf(fmt, ## __VA_ARGS__)
@@ -300,6 +306,11 @@ void test_adaptative_lock(void)
 	uintptr_t sum;
 	pthread_t test_threads[num_threads];
 	struct adaptative_lock_thread_test_data thread_data[num_threads];
+
+	if (sys_rseq(NULL, 0, RSEQ_FLAG_QUERY_ABORT_AT_IP, 0) != 0) {
+		perror("sys_rseq abort-at-ip extension not supported");
+		abort();
+	}
 
 	for (i = 0; i < num_threads; i++) {
 		thread_data[i].reps = opt_reps;
