@@ -222,7 +222,8 @@ skip_wait:
 	}
 }
 
-static inline __attribute__((always_inline))
+/* Do a fair comparison with glibc with a function call */
+__attribute__((noinline))
 void rseq_lock(struct rseq_lock *lock)
 {
 	if (caa_unlikely(rseq_trylock(&testlock)))
@@ -230,7 +231,7 @@ void rseq_lock(struct rseq_lock *lock)
 	CMM_STORE_SHARED(lock->cpu, __rseq_abi.cpu_id_start);
 }
 
-static inline __attribute__((always_inline))
+__attribute__((noinline))
 int rseq_unlock(struct rseq_lock *lock)
 {
 	unsigned int state;
